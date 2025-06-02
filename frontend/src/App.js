@@ -58,6 +58,7 @@ function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [gameEnd, setGameEnd] = useState(null);
   const [error, setError] = useState('');
+  const [prefilledGameCode, setPrefilledGameCode] = useState('');
 
   // Get backend URL from environment or detect automatically
   const getBackendURL = () => {
@@ -76,6 +77,23 @@ function App() {
   };
   
   const BACKEND_URL = getBackendURL();
+
+  // Check for game code in URL on component mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const gameCode = urlParams.get('code');
+    
+    if (gameCode) {
+      // Validate game code format (6 characters, alphanumeric)
+      const validGameCode = gameCode.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6);
+      if (validGameCode.length === 6) {
+        setPrefilledGameCode(validGameCode);
+        setGameState('join');
+        // Clean URL without reloading the page
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const newSocket = io(BACKEND_URL);
@@ -182,6 +200,12 @@ function App() {
     setLeaderboard([]);
     setGameEnd(null);
     setError('');
+    setPrefilledGameCode('');
+  };
+
+  const clearPrefilledCodeAndGoHome = () => {
+    setPrefilledGameCode('');
+    setGameState('home');
   };
 
   const renderCurrentView = () => {
@@ -204,7 +228,8 @@ function App() {
         return (
           <JoinGame 
             onJoinGame={joinGame}
-            onBack={() => setGameState('home')}
+            onBack={clearPrefilledCodeAndGoHome}
+            prefilledGameCode={prefilledGameCode}
           />
         );
       case 'lobby':

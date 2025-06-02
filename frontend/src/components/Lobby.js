@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 
@@ -124,8 +124,100 @@ const LoadingDots = () => (
   </div>
 );
 
+const ShareSection = styled(motion.div)`
+  background: rgba(40, 167, 69, 0.1);
+  padding: 20px;
+  border-radius: 15px;
+  margin-top: 20px;
+  border: 1px solid rgba(40, 167, 69, 0.2);
+  max-width: 500px;
+  width: 100%;
+`;
+
+const ShareTitle = styled.h3`
+  color: #28a745;
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const ShareLinkContainer = styled.div`
+  display: flex;
+  background: white;
+  border-radius: 10px;
+  border: 2px solid #e0e0e0;
+  overflow: hidden;
+  margin-bottom: 10px;
+`;
+
+const ShareLinkInput = styled.input`
+  flex: 1;
+  padding: 12px 15px;
+  border: none;
+  font-size: 0.9rem;
+  color: #333;
+  background: transparent;
+  
+  &:focus {
+    outline: none;
+  }
+`;
+
+const CopyButton = styled(motion.button)`
+  padding: 12px 20px;
+  background: #28a745;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: #218838;
+  }
+
+  &.copied {
+    background: #17a2b8;
+  }
+`;
+
+const ShareInfo = styled.p`
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0;
+`;
+
 const Lobby = ({ sessionData, playerData, onStartGame, onBack }) => {
   const isAdmin = playerData?.isAdmin;
+  const [copyStatus, setCopyStatus] = useState('');
+
+  const generateShareLink = () => {
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?code=${sessionData?.sessionId}`;
+  };
+
+  const handleCopyLink = async () => {
+    const shareLink = generateShareLink();
+    
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setCopyStatus('Copied!');
+      setTimeout(() => setCopyStatus(''), 2000);
+    } catch (err) {
+      // Fallback for browsers that don't support clipboard API
+      const textArea = document.createElement('textarea');
+      textArea.value = shareLink;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopyStatus('Copied!');
+      setTimeout(() => setCopyStatus(''), 2000);
+    }
+  };
 
   return (
     <Container
@@ -175,10 +267,38 @@ const Lobby = ({ sessionData, playerData, onStartGame, onBack }) => {
         📝 {sessionData?.questionCount} Questions Ready
       </QuestionCount>
 
-      <motion.div
+      <ShareSection
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.6 }}
+      >
+        <ShareTitle>
+          🔗 Direct Join Link
+        </ShareTitle>
+        <ShareLinkContainer>
+          <ShareLinkInput
+            value={generateShareLink()}
+            readOnly
+            onClick={(e) => e.target.select()}
+          />
+          <CopyButton
+            onClick={handleCopyLink}
+            className={copyStatus ? 'copied' : ''}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            {copyStatus || 'Copy'}
+          </CopyButton>
+        </ShareLinkContainer>
+        <ShareInfo>
+          Share this link with players to join automatically without entering the game code!
+        </ShareInfo>
+      </ShareSection>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.7 }}
       >
         {isAdmin && (
           <Button
@@ -206,7 +326,7 @@ const Lobby = ({ sessionData, playerData, onStartGame, onBack }) => {
         <WaitingMessage
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
+          transition={{ delay: 0.9 }}
         >
           <div>Waiting for game admin to start the game</div>
           <LoadingDots />

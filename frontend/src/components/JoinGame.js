@@ -132,9 +132,16 @@ const InfoText = styled.p`
   line-height: 1.5;
 `;
 
-const JoinGame = ({ onJoinGame, onBack }) => {
+const JoinGame = ({ onJoinGame, onBack, prefilledGameCode = '' }) => {
   const [username, setUsername] = useState('');
-  const [sessionCode, setSessionCode] = useState('');
+  const [sessionCode, setSessionCode] = useState(prefilledGameCode);
+
+  // Update session code when prefilledGameCode changes
+  React.useEffect(() => {
+    if (prefilledGameCode) {
+      setSessionCode(prefilledGameCode);
+    }
+  }, [prefilledGameCode]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
