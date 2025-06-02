@@ -3,5 +3,8 @@
   "deploy": {
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
+  },
+  "variables": {
+    "PORT": "5000"
   }
 } 

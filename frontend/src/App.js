@@ -59,8 +59,23 @@ function App() {
   const [gameEnd, setGameEnd] = useState(null);
   const [error, setError] = useState('');
 
-  // Get backend URL from environment or use localhost for development
-  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+  // Get backend URL from environment or detect automatically
+  const getBackendURL = () => {
+    // If explicitly set via environment variable, use that
+    if (process.env.REACT_APP_BACKEND_URL) {
+      return process.env.REACT_APP_BACKEND_URL;
+    }
+    
+    // In production, use the same domain as the frontend
+    if (process.env.NODE_ENV === 'production') {
+      return window.location.origin;
+    }
+    
+    // In development, use localhost
+    return 'http://localhost:5000';
+  };
+  
+  const BACKEND_URL = getBackendURL();
 
   useEffect(() => {
     const newSocket = io(BACKEND_URL);

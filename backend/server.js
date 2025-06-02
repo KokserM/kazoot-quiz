@@ -12,9 +12,29 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? process.env.FRONTEND_URL 
-      : ["http://localhost:3000", "http://192.168.1.216:3000"],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // In development, allow localhost
+      if (process.env.NODE_ENV !== 'production') {
+        if (origin.includes('localhost') || origin.includes('192.168.')) {
+          return callback(null, true);
+        }
+      }
+      
+      // In production, allow Railway domains and any HTTPS origin
+      if (origin.includes('railway.app') || origin.startsWith('https://')) {
+        return callback(null, true);
+      }
+      
+      // Allow if explicitly set
+      if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
+        return callback(null, true);
+      }
+      
+      callback(new Error('Not allowed by CORS'));
+    },
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -40,9 +60,29 @@ if (process.env.OPENAI_API_KEY) {
 }
 
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL 
-    : ["http://localhost:3000", "http://192.168.1.216:3000"],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // In development, allow localhost
+    if (process.env.NODE_ENV !== 'production') {
+      if (origin.includes('localhost') || origin.includes('192.168.')) {
+        return callback(null, true);
+      }
+    }
+    
+    // In production, allow Railway domains and any HTTPS origin
+    if (origin.includes('railway.app') || origin.startsWith('https://')) {
+      return callback(null, true);
+    }
+    
+    // Allow if explicitly set
+    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 app.use(express.json());
