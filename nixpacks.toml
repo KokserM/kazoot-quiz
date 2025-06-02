@@ -1,7 +1,22 @@
+[variables]
+NODE_ENV = "production"
+
+[phases.setup]
+nixPkgs = ["nodejs", "npm"]
+
+[phases.install]
+cmds = [
+    "echo 'Installing frontend dependencies...'",
+    "cd frontend && npm install --production=false",
+    "echo 'Installing backend dependencies...'", 
+    "cd backend && npm install"
+]
+
 [phases.build]
 cmds = [
-    "cd frontend && npm ci && npm run build",
-    "cd backend && npm ci"
+    "echo 'Building frontend...'",
+    "cd frontend && npm run build",
+    "echo 'Build completed successfully!'"
 ]
 
 [phases.start]
