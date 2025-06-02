@@ -22,10 +22,13 @@ const io = socketIo(server, {
 
 // Initialize OpenAI only if API key is provided
 let openai = null;
-console.log('Environment check:');
+console.log('=== Environment Debug ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
 console.log('OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
 console.log('OPENAI_API_KEY length:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0);
+console.log('All env keys containing "OPENAI":', Object.keys(process.env).filter(key => key.includes('OPENAI')));
+console.log('=========================');
 
 if (process.env.OPENAI_API_KEY) {
   openai = new OpenAI({
@@ -485,7 +488,15 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`OpenAI API: ${process.env.OPENAI_API_KEY ? 'Enabled' : 'Disabled (using demo questions)'}`);
+const HOST = '0.0.0.0';
+
+server.listen(PORT, HOST, () => {
+  console.log(`🚀 Server running on ${HOST}:${PORT}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🤖 OpenAI API: ${openai ? 'Enabled' : 'Disabled (using demo questions)'}`);
+  console.log(`📝 Health check: http://localhost:${PORT}/health`);
+  
+  if (process.env.NODE_ENV === 'production') {
+    console.log(`🎮 Your app should be accessible at your Railway domain`);
+  }
 }); 
