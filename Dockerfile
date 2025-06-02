@@ -4,23 +4,30 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy all package files first
 COPY package*.json ./
 COPY frontend/package*.json ./frontend/
 COPY backend/package*.json ./backend/
 
-# Install dependencies
-RUN cd frontend && npm install
-RUN cd backend && npm install
+# Install frontend dependencies
+WORKDIR /app/frontend
+RUN npm install
 
-# Copy source code
+# Install backend dependencies
+WORKDIR /app/backend
+RUN npm install
+
+# Go back to app root and copy source code
+WORKDIR /app
 COPY . .
 
 # Build frontend
-RUN cd frontend && npm run build
+WORKDIR /app/frontend
+RUN npm run build
 
 # Expose port
 EXPOSE 5000
 
-# Start the application
-CMD ["node", "backend/server.js"] 
+# Start the application from backend directory
+WORKDIR /app/backend
+CMD ["node", "server.js"] 
