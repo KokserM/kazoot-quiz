@@ -22,13 +22,18 @@ const io = socketIo(server, {
 
 // Initialize OpenAI only if API key is provided
 let openai = null;
+console.log('Environment check:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
+console.log('OPENAI_API_KEY length:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0);
+
 if (process.env.OPENAI_API_KEY) {
   openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
-  console.log('OpenAI client initialized');
+  console.log('✅ OpenAI client initialized successfully');
 } else {
-  console.log('No OpenAI API key provided - will use demo questions');
+  console.log('❌ No OpenAI API key provided - will use demo questions');
 }
 
 app.use(cors({
