@@ -1,0 +1,8 @@
+[phases.build]
+cmds = [
+    "cd frontend && npm ci && npm run build",
+    "cd backend && npm ci"
+]
+
+[phases.start]
+cmd = "cd backend && node server.js" 
