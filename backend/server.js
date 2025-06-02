@@ -20,10 +20,16 @@ const io = socketIo(server, {
   }
 });
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI only if API key is provided
+let openai = null;
+if (process.env.OPENAI_API_KEY) {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  console.log('OpenAI client initialized');
+} else {
+  console.log('No OpenAI API key provided - will use demo questions');
+}
 
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
@@ -148,9 +154,9 @@ async function generateQuiz(topic) {
     return demoQuestions[topic];
   }
 
-  // If no OpenAI API key is provided, use a fallback
-  if (!process.env.OPENAI_API_KEY) {
-    console.log('No OpenAI API key provided, using demo questions');
+  // If no OpenAI client is available, use a fallback
+  if (!openai) {
+    console.log('No OpenAI client available, using demo questions');
     // Return the first available demo questions
     const firstTopic = Object.keys(demoQuestions)[0];
     return { ...demoQuestions[firstTopic], topic };
@@ -257,7 +263,7 @@ app.post('/api/create-session', async (req, res) => {
 app.get('/api/demo-topics', (req, res) => {
   res.json({
     topics: Object.keys(demoQuestions),
-    hasOpenAI: !!process.env.OPENAI_API_KEY
+    hasOpenAI: !!openai
   });
 });
 
