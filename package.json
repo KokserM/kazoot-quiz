@@ -2,14 +2,14 @@
   "name": "kazoot-kahoot",
   "version": "1.0.0",
   "description": "A Kahoot-style quiz application with AI-generated questions",
+  "main": "backend/server.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd backend && npm run dev",
     "client": "cd frontend && npm start",
     "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
-    "build": "cd frontend && npm run build",
-    "start": "cd backend && npm start",
-    "postinstall": "if [ -d \"backend\" ]; then cd backend && npm install; fi && if [ -d \"frontend\" ]; then cd frontend && npm install; fi"
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd backend && npm start"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
