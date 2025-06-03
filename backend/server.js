@@ -214,7 +214,9 @@ async function generateQuiz(topic, language = 'Estonian') {
 You are an imaginative quiz master AND an uncompromising copy-editor for ${language}.
 Tasks:
 1. Draft 10 fact-based multiple-choice questions about "${topic}", for session ${sessionId}.
-   • Exactly four choices, one correct.
+   • Exactly four choices, ONE correct.
+   • Randomise the order of the four choices – the correct answer **must NOT always be first**.  
+     Across the 10 questions aim for a roughly even spread of correctAnswerIndex values 0-3.
    • Facts only; vary difficulty; playful tone.
    • Ensure questions are unique and diverse, exploring different aspects of "${topic}".
    • Avoid repeating question styles or content from previous sessions.
@@ -501,19 +503,29 @@ function showQuestionResults(sessionId) {
 
   // Calculate answer distribution
   const answerStats = [0, 0, 0, 0];
-  session.players.forEach(player => {
+  const playerAnswers = new Map(); // Track each player's answer
+  
+  session.players.forEach((player, socketId) => {
     const answer = player.answers[session.currentQuestionIndex];
     if (answer !== undefined) {
       answerStats[answer.answerIndex]++;
+      playerAnswers.set(socketId, answer.answerIndex);
     }
   });
 
-  io.to(sessionId).emit('question-results', {
-    correctAnswer: currentQuestion.correctAnswerIndex,
-    correctAnswerText: currentQuestion.choices[currentQuestion.correctAnswerIndex],
-    answerStats,
-    leaderboard,
-    isLastQuestion: session.currentQuestionIndex === session.questions.length - 1
+  // Send results to each player individually with their answer
+  session.players.forEach((player, socketId) => {
+    const playerAnswer = playerAnswers.get(socketId);
+    
+    io.to(socketId).emit('question-results', {
+      correctAnswer: currentQuestion.correctAnswerIndex,
+      correctAnswerText: currentQuestion.choices[currentQuestion.correctAnswerIndex],
+      answerStats,
+      leaderboard,
+      isLastQuestion: session.currentQuestionIndex === session.questions.length - 1,
+      playerAnswer: playerAnswer !== undefined ? playerAnswer : null, // Player's chosen answer index
+      allChoices: currentQuestion.choices // Include all answer choices for display
+    });
   });
 }
 

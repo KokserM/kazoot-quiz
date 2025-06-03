@@ -40,19 +40,67 @@ const StatsContainer = styled(motion.div)`
 
 const StatCard = styled(motion.div)`
   background: white;
-  border: 2px solid ${props => props.color || '#e0e0e0'};
+  border: 3px solid ${props => {
+    if (props.isPlayerChoice && props.isCorrect) return '#4ecdc4'; // Player chose correct answer
+    if (props.isPlayerChoice && !props.isCorrect) return '#ff6b6b'; // Player chose wrong answer
+    if (props.isCorrect) return '#26a69a'; // Correct answer (not chosen by player)
+    return props.color || '#e0e0e0'; // Default
+  }};
   border-radius: 15px;
   padding: 20px;
   text-align: center;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: ${props => props.isPlayerChoice ? '0 8px 25px rgba(0, 0, 0, 0.2)' : '0 5px 15px rgba(0, 0, 0, 0.1)'};
+  transform: ${props => props.isPlayerChoice ? 'scale(1.05)' : 'scale(1)'};
+  position: relative;
+`;
+
+const PlayerChoiceIndicator = styled.div`
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  background: ${props => props.isCorrect ? '#4ecdc4' : '#ff6b6b'};
+  color: white;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: bold;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  border: 2px solid white;
 `;
 
 const StatLabel = styled.div`
-  font-size: 0.9rem;
-  color: #666;
-  margin-bottom: 5px;
+  font-size: 1rem;
+  color: ${props => {
+    if (props.isPlayerChoice && props.isCorrect) return '#4ecdc4';
+    if (props.isPlayerChoice && !props.isCorrect) return '#ff6b6b';
+    if (props.isCorrect) return '#26a69a';
+    return '#666';
+  }};
+  margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 1px;
+  font-weight: ${props => props.isPlayerChoice ? 'bold' : 'normal'};
+`;
+
+const AnswerText = styled.div`
+  font-size: 0.95rem;
+  color: ${props => {
+    if (props.isPlayerChoice && props.isCorrect) return '#4ecdc4';
+    if (props.isPlayerChoice && !props.isCorrect) return '#ff6b6b';
+    if (props.isCorrect) return '#26a69a';
+    return '#333';
+  }};
+  margin-bottom: 10px;
+  line-height: 1.3;
+  font-weight: ${props => props.isPlayerChoice ? 'bold' : 'normal'};
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 `;
 
 const StatValue = styled.div`
@@ -166,7 +214,7 @@ const WaitingMessage = styled(motion.div)`
 const Results = ({ questionResults, onNextQuestion, isAdmin = false }) => {
   if (!questionResults) return null;
 
-  const { correctAnswer, correctAnswerText, answerStats, leaderboard, isLastQuestion } = questionResults;
+  const { correctAnswer, correctAnswerText, answerStats, leaderboard, isLastQuestion, playerAnswer, allChoices } = questionResults;
 
   const answerLabels = ['A', 'B', 'C', 'D'];
   const answerColors = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#a8e6cf'];
@@ -211,24 +259,52 @@ const Results = ({ questionResults, onNextQuestion, isAdmin = false }) => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
       >
-        {answerStats.map((count, index) => (
-          <StatCard
-            key={index}
-            color={answerColors[index]}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 + index * 0.1 }}
-            whileHover={{ scale: 1.05 }}
-          >
-            <StatLabel>Option {answerLabels[index]}</StatLabel>
-            <StatValue color={answerColors[index]}>
-              {totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0}%
-            </StatValue>
-            <div style={{ fontSize: '0.9rem', color: '#666', marginTop: '5px' }}>
-              {count} player{count !== 1 ? 's' : ''}
-            </div>
-          </StatCard>
-        ))}
+        {answerStats.map((count, index) => {
+          const isPlayerChoice = playerAnswer === index;
+          const isCorrect = index === correctAnswer;
+          const answerText = allChoices ? allChoices[index] : `Option ${answerLabels[index]}`;
+          
+          return (
+            <StatCard
+              key={index}
+              color={answerColors[index]}
+              isPlayerChoice={isPlayerChoice}
+              isCorrect={isCorrect}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 + index * 0.1 }}
+              whileHover={{ scale: isPlayerChoice ? 1.05 : 1.02 }}
+            >
+              {isPlayerChoice && (
+                <PlayerChoiceIndicator isCorrect={isCorrect}>
+                  {isCorrect ? '✓' : '✗'}
+                </PlayerChoiceIndicator>
+              )}
+              
+              <StatLabel 
+                isPlayerChoice={isPlayerChoice}
+                isCorrect={isCorrect}
+              >
+                {answerLabels[index]}
+              </StatLabel>
+              
+              <AnswerText 
+                isPlayerChoice={isPlayerChoice}
+                isCorrect={isCorrect}
+              >
+                {answerText}
+              </AnswerText>
+              
+              <StatValue color={answerColors[index]}>
+                {totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0}%
+              </StatValue>
+              
+              <div style={{ fontSize: '0.9rem', color: '#666', marginTop: '5px' }}>
+                {count} player{count !== 1 ? 's' : ''}
+              </div>
+            </StatCard>
+          );
+        })}
       </StatsContainer>
 
       <LeaderboardContainer
