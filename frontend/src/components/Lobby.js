@@ -58,6 +58,20 @@ const QuestionCount = styled(motion.div)`
   border: 2px solid rgba(118, 75, 162, 0.2);
 `;
 
+const LanguageDisplay = styled(motion.div)`
+  background: rgba(255, 193, 7, 0.1);
+  padding: 12px 20px;
+  border-radius: 15px;
+  font-size: 1rem;
+  color: #ff9800;
+  margin-bottom: 20px;
+  border: 2px solid rgba(255, 193, 7, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+`;
+
 const Button = styled(motion.button)`
   padding: 15px 40px;
   font-size: 1.3rem;
@@ -266,6 +280,16 @@ const Lobby = ({ sessionData, playerData, onStartGame, onBack }) => {
       >
         📝 {sessionData?.questionCount} Questions Ready
       </QuestionCount>
+
+      {sessionData?.language && sessionData.language !== 'English' && (
+        <LanguageDisplay
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.55 }}
+        >
+          🌍 Quiz Language: {sessionData.language}
+        </LanguageDisplay>
+      )}
 
       <ShareSection
         initial={{ opacity: 0, y: 20 }}

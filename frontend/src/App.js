@@ -150,12 +150,12 @@ function App() {
     return () => newSocket.close();
   }, []);
 
-  const createGame = async (topic, username) => {
+  const createGame = async (topic, username, language = 'English') => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/create-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic })
+        body: JSON.stringify({ topic, language })
       });
       
       const data = await response.json();
@@ -220,7 +220,7 @@ function App() {
       case 'create':
         return (
           <CreateGame 
-            onCreateGame={(topic, username) => createGame(topic, username)}
+            onCreateGame={(topic, username, language) => createGame(topic, username, language)}
             onBack={() => setGameState('home')}
           />
         );

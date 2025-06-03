@@ -65,6 +65,33 @@ const Input = styled.input`
   }
 `;
 
+const Select = styled.select`
+  padding: 15px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  background: white;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
+`;
+
+const LanguageInfo = styled(motion.div)`
+  background: rgba(102, 126, 234, 0.1);
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-top: 8px;
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  font-size: 0.9rem;
+  color: #667eea;
+  text-align: center;
+`;
+
 const Button = styled(motion.button)`
   padding: 15px 30px;
   font-size: 1.2rem;
@@ -140,12 +167,18 @@ const LoadingSpinner = styled(motion.div)`
 const CreateGame = ({ onCreateGame, onBack }) => {
   const [username, setUsername] = useState('');
   const [topic, setTopic] = useState('');
+  const [language, setLanguage] = useState('English');
   const [isLoading, setIsLoading] = useState(false);
 
   const topicSuggestions = [
     '90s Movies', 'Space & Astronomy', 'Video Games', 'World History',
     'Pop Music', 'Science Fiction', 'Cooking & Food', 'Sports Trivia',
     'Art & Culture', 'Technology', 'Animals & Nature', 'Geography'
+  ];
+
+  const languages = [
+    { code: 'English', name: 'English', flag: '🇬🇧' },
+    { code: 'Estonian', name: 'Eesti keel', flag: '🇪🇪' }
   ];
 
   const handleSubmit = async (e) => {
@@ -155,7 +188,7 @@ const CreateGame = ({ onCreateGame, onBack }) => {
     setIsLoading(true);
     
     try {
-      await onCreateGame(topic, username);
+      await onCreateGame(topic, username, language);
     } catch (error) {
       console.error('Failed to create game:', error);
     } finally {
@@ -200,6 +233,28 @@ const CreateGame = ({ onCreateGame, onBack }) => {
             placeholder="Enter your name"
             required
           />
+        </InputGroup>
+
+        <InputGroup>
+          <Label>Quiz Language</Label>
+          <Select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            required
+          >
+            {languages.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.flag} {lang.name}
+              </option>
+            ))}
+          </Select>
+          <LanguageInfo
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+          >
+            🤖 Questions will be generated in {languages.find(l => l.code === language)?.name}
+          </LanguageInfo>
         </InputGroup>
 
         <InputGroup>

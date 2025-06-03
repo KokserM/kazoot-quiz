@@ -108,9 +108,10 @@ const playerSessions = new Map();
 
 // Game session structure
 class GameSession {
-  constructor(id, topic) {
+  constructor(id, topic, language) {
     this.id = id;
     this.topic = topic;
+    this.language = language;
     this.questions = [];
     this.players = new Map();
     this.currentQuestionIndex = -1;
@@ -195,67 +196,61 @@ class GameSession {
 }
 
 // Helper function to generate quiz questions
-async function generateQuiz(topic) {
-  // Check if we have demo questions for this topic first
-  if (demoQuestions[topic]) {
-    console.log(`Using demo questions for topic: ${topic}`);
-    return demoQuestions[topic];
-  }
+async function generateQuiz(topic, language = 'Estonian') {
+  // 1-a. Use local demo questions if they exist
+  if (demoQuestions[topic]) return demoQuestions[topic];
 
-  // If no OpenAI client is available, use a fallback
+  // 1-b. Bail out if OpenAI client is missing
   if (!openai) {
-    console.log('No OpenAI client available, using demo questions');
-    // Return the first available demo questions
     const firstTopic = Object.keys(demoQuestions)[0];
     return { ...demoQuestions[firstTopic], topic };
   }
 
-  try {
-    const prompt = `You are a wildly imaginative quiz master. Generate exactly 10 multiple-choice quiz questions about "${topic}" that are rooted in real, verifiable facts while still being creative, whimsical, and engaging. Avoid hypothetical or fictional "what-if" scenarios—each question must be based on true information, intriguing trivia, or surprising but accurate details about the topic.
+  // 2. Build messages with random focus for diversity
 
-Return your response as a single JSON object with this exact structure—no extra text, only valid JSON:
+  const sessionId = Date.now();
+
+  const systemPrompt = `
+You are an imaginative quiz master AND an uncompromising copy-editor for ${language}.
+Tasks:
+1. Draft 10 fact-based multiple-choice questions about "${topic}", for session ${sessionId}.
+   • Exactly four choices, one correct.
+   • Facts only; vary difficulty; playful tone.
+   • Ensure questions are unique and diverse, exploring different aspects of "${topic}".
+   • Avoid repeating question styles or content from previous sessions.
+   • Everything in ${language}.
+2. Silently proof-read your own output for perfect ${language} grammar.
+
+Return only valid JSON that matches:
 {
   "topic": "${topic}",
+  "language": "${language}",
   "questions": [
-    {
-      "question": "Question text here?",
-      "choices": ["Choice 1", "Choice 2", "Choice 3", "Choice 4"],
-      "correctAnswerIndex": 0
-    }
-    // (repeat for a total of 10 questions)
+    { "question": "…?", "choices": ["…","…","…","…"], "correctAnswerIndex": 0 }
+    // 9 more
   ]
 }
+  `.trim();
 
-Guidelines:
-- Create 10 distinct questions, each grounded in fact.  
-- Each question must have exactly 4 plausible answer choices; only one is correct.  
-- Draw on verifiable facts, historical events, scientific data, or documented trivia related to the topic.  
-- Use engaging language—add a dash of humor, vivid phrasing, or playful storytelling while staying accurate.  
-- Questions should vary in style and difficulty: from very easy, confidence-building ones to more challenging, "aha" factoids.  
-- Keep answer choices believable and consistently phrased so the correct answer isn't obvious at first glance.  
-- The correctAnswerIndex must be an integer from 0–3 representing the position of the correct choice in the "choices" array.  
-- Do not include any commentary, introductions, or explanations outside the JSON—only the JSON object.`;
-
+  try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are a quiz master who creates engaging, fun multiple-choice questions. Always respond with valid JSON only, no additional text."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.8,
-      max_tokens: 2000
+      model: 'gpt-4o', // Switched to gpt-4o for more creativity
+      messages: [{ role: 'system', content: systemPrompt }],
+      temperature: 0.7, // Increased for more varied outputs
+      max_tokens: 1100,
+      response_format: { type: 'json_object' }
     });
 
-    return JSON.parse(completion.choices[0].message.content);
-  } catch (error) {
-    console.error('Error with OpenAI API, falling back to demo questions:', error.message);
-    // Fallback to demo questions if OpenAI fails
+    let quiz;
+    try {
+      quiz = JSON.parse(completion.choices[0].message.content);
+    } catch (e) {
+      throw new Error('Model did not return valid JSON');
+    }
+
+    return quiz;
+  } catch (err) {
+    console.error('OpenAI error, using fallback:', err.message);
     const firstTopic = Object.keys(demoQuestions)[0];
     return { ...demoQuestions[firstTopic], topic };
   }
@@ -264,13 +259,13 @@ Guidelines:
 // API Routes
 app.post('/api/generate-quiz', async (req, res) => {
   try {
-    const { topic } = req.body;
+    const { topic, language = 'English' } = req.body;
     
     if (!topic) {
       return res.status(400).json({ error: 'Topic is required' });
     }
 
-    const quizData = await generateQuiz(topic);
+    const quizData = await generateQuiz(topic, language);
     
     // Validate the response structure
     if (!quizData.questions || quizData.questions.length !== 10) {
@@ -286,12 +281,12 @@ app.post('/api/generate-quiz', async (req, res) => {
 
 app.post('/api/create-session', async (req, res) => {
   try {
-    const { topic } = req.body;
+    const { topic, language = 'English' } = req.body;
     const sessionId = uuidv4().substring(0, 6).toUpperCase();
     
     // Generate quiz questions directly
-    const quizData = await generateQuiz(topic);
-    const session = new GameSession(sessionId, topic);
+    const quizData = await generateQuiz(topic, language);
+    const session = new GameSession(sessionId, topic, language);
     session.questions = quizData.questions;
     
     gameSessions.set(sessionId, session);
@@ -299,6 +294,7 @@ app.post('/api/create-session', async (req, res) => {
     res.json({
       sessionId,
       topic,
+      language,
       questionCount: session.questions.length
     });
   } catch (error) {
@@ -350,6 +346,7 @@ io.on('connection', (socket) => {
     socket.emit('joined-game', {
       sessionId,
       topic: session.topic,
+      language: session.language,
       playerCount: session.players.size,
       questionCount: session.questions.length,
       isAdmin: isAdmin
