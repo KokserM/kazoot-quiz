@@ -39,7 +39,27 @@ function Shell({ children }) {
   );
 }
 
+function MobileOnlyHint({ children }) {
+  return (
+    <div
+      style={{
+        color: theme.colors.textSoft,
+        fontSize: '0.92rem',
+        lineHeight: 1.5,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function MarketingHome() {
+  const stats = [
+    ['10-question rounds', 'Balanced pacing that fits short sessions and party play.'],
+    ['Reconnect aware', 'Players can refresh and still keep their seat while the server stays alive.'],
+    ['Host-led control', 'Only the host launches the game and advances the room.'],
+  ];
+
   return (
     <Shell>
       <HeroCard initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
@@ -51,22 +71,50 @@ function MarketingHome() {
             with server-authoritative timing, live scoring, and GPT-5.4 generated question sets.
           </Subtitle>
         </div>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 10,
+            marginTop: 18,
+          }}
+        >
+          <StatChip>GPT-5.4 question sets</StatChip>
+          <StatChip>Single-room host controls</StatChip>
+          <StatChip>Realtime synchronized rounds</StatChip>
+        </div>
         <ButtonRow style={{ marginTop: 28 }}>
           <Button as={Link} to="/create">
-            Host a game
+            Host a premium game
           </Button>
           <Button as={Link} to="/join" variant="secondary">
             Join by code
           </Button>
         </ButtonRow>
-        <Grid gap="18px" style={{ marginTop: 34 }}>
+        <Grid gap="18px" $mobileColumns="1fr" style={{ marginTop: 34 }}>
           {[
             ['Authoritative realtime', 'Server-timed rounds prevent drift, duplicate scoring, and stale timer bugs.'],
             ['Rejoin without chaos', 'Players reconnect with stored tokens instead of losing their seat mid-game.'],
             ['Better AI prompts', 'GPT-5.4 uses structured output plus duplicate filtering to keep sets fresh.'],
-          ].map(([headline, copy]) => (
+          ].map(([headline, copy], index) => (
             <Card key={headline} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <div style={{ color: theme.colors.gold, fontSize: '0.82rem', marginBottom: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                0{index + 1}
+              </div>
               <SectionTitle style={{ fontSize: '1.15rem', marginBottom: 10 }}>{headline}</SectionTitle>
+              <Subtitle>{copy}</Subtitle>
+            </Card>
+          ))}
+        </Grid>
+        <Grid
+          gap="16px"
+          columns="repeat(auto-fit, minmax(220px, 1fr))"
+          $mobileColumns="1fr"
+          style={{ marginTop: 18 }}
+        >
+          {stats.map(([headline, copy]) => (
+            <Card key={headline} initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ background: theme.gradients.success }}>
+              <SectionTitle style={{ fontSize: '1.02rem', marginBottom: 8 }}>{headline}</SectionTitle>
               <Subtitle>{copy}</Subtitle>
             </Card>
           ))}
@@ -139,7 +187,7 @@ function CreatePage() {
         {error ? <Banner $tone="danger">{error}</Banner> : null}
 
         <form onSubmit={handleSubmit}>
-          <Grid columns="repeat(auto-fit, minmax(260px, 1fr))">
+          <Grid columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
             <div>
               <Label htmlFor="host-name">Host name</Label>
               <Input
@@ -180,7 +228,12 @@ function CreatePage() {
           </div>
 
           {topics.length ? (
-            <Grid gap="10px" columns="repeat(auto-fit, minmax(150px, 1fr))" style={{ marginTop: 18 }}>
+            <Grid
+              gap="10px"
+              columns="repeat(auto-fit, minmax(150px, 1fr))"
+              $mobileColumns="1fr"
+              style={{ marginTop: 18 }}
+            >
               {topics.map((suggestion) => (
                 <Button
                   key={suggestion}
@@ -249,7 +302,7 @@ function JoinPage() {
         </HeaderRow>
 
         <form onSubmit={handleSubmit}>
-          <Grid columns="repeat(auto-fit, minmax(260px, 1fr))">
+          <Grid columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
             <div>
               <Label htmlFor="join-name">Player name</Label>
               <Input
@@ -290,6 +343,14 @@ function JoinPage() {
 }
 
 function SessionHeader({ session, connectionStatus }) {
+  const stageLabel = session.gameState === 'waiting'
+    ? 'Lobby open'
+    : session.gameState === 'question'
+      ? 'Question live'
+      : session.gameState === 'results'
+        ? 'Results'
+        : 'Finished';
+
   return (
     <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
       <HeaderRow style={{ marginBottom: 0 }}>
@@ -304,8 +365,16 @@ function SessionHeader({ session, connectionStatus }) {
             <Subtitle>{session.language} questions, 10 rounds, live server-authoritative scoring.</Subtitle>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            flexWrap: 'wrap',
+            justifyContent: 'flex-end',
+          }}
+        >
           <StatChip>{session.connectedPlayerCount} connected</StatChip>
+          <StatChip>{stageLabel}</StatChip>
           <Pill $tone={connectionStatus === 'connected' ? 'success' : 'warning'}>
             {connectionStatus === 'connected' ? 'Live connection' : 'Reconnecting...'}
           </Pill>
@@ -318,13 +387,14 @@ function SessionHeader({ session, connectionStatus }) {
 
 function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
   const shareLink = `${window.location.origin}/session/${session.sessionId}`;
+  const canStart = session.you?.isHost && session.connectedPlayerCount >= 2;
 
   async function copyLink() {
     await navigator.clipboard.writeText(shareLink);
   }
 
   return (
-    <Grid columns="1.3fr 1fr">
+    <Grid columns="1.3fr 1fr" $mobileColumns="1fr">
       <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <SectionTitle>Lobby</SectionTitle>
         <Subtitle style={{ marginTop: 8 }}>
@@ -332,7 +402,7 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
           you are ready.
         </Subtitle>
 
-        <Grid gap="12px" style={{ marginTop: 20 }}>
+        <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 20 }}>
           <StatChip>Code: {session.sessionId}</StatChip>
           <StatChip>Questions: {session.questionCount}</StatChip>
         </Grid>
@@ -347,21 +417,41 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
             Copy link
           </Button>
           {session.you?.isHost ? (
-            <Button type="button" onClick={onStartGame} whileTap={{ scale: 0.98 }}>
-              Start game
+            <Button
+              type="button"
+              onClick={onStartGame}
+              disabled={!canStart}
+              whileTap={{ scale: canStart ? 0.98 : 1 }}
+            >
+              Start live game
             </Button>
           ) : null}
           <Button type="button" variant="ghost" onClick={onLeave} whileTap={{ scale: 0.98 }}>
             Leave
           </Button>
         </ButtonRow>
+        <div style={{ marginTop: 12 }}>
+          <MobileOnlyHint>
+            {session.you?.isHost
+              ? canStart
+                ? 'Only the host can start the game. Everyone else joins the lobby and waits for kickoff.'
+                : 'Only the host can start the game, and you need at least one more connected player before kickoff.'
+              : 'Only the host can start the game. You will move into the quiz as soon as the host begins.'}
+          </MobileOnlyHint>
+        </div>
       </Card>
 
       <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <SectionTitle>Players</SectionTitle>
-        <Grid gap="12px" style={{ marginTop: 18 }}>
+        <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 18 }}>
           {session.players.map((player) => (
-            <Card key={player.playerId} style={{ padding: 16 }}>
+            <Card
+              key={player.playerId}
+              style={{
+                padding: 16,
+                background: player.isHost ? theme.gradients.accent : undefined,
+              }}
+            >
               <HeaderRow style={{ marginBottom: 0 }}>
                 <div>
                   <strong>{player.username}</strong>
@@ -439,7 +529,7 @@ function QuestionView({ question, onSubmitAnswer }) {
             <SectionTitle>{question.question}</SectionTitle>
           </div>
         </div>
-        <div style={{ minWidth: 160 }}>
+        <div style={{ minWidth: 0, width: '100%', maxWidth: 220 }}>
           <div style={{ fontWeight: 700, fontSize: '1.5rem', textAlign: 'right' }}>{remainingSeconds}s</div>
           <div
             aria-hidden="true"
@@ -463,7 +553,7 @@ function QuestionView({ question, onSubmitAnswer }) {
         </div>
       </HeaderRow>
 
-      <Grid gap="14px" columns="repeat(auto-fit, minmax(240px, 1fr))">
+      <Grid gap="14px" columns="repeat(auto-fit, minmax(240px, 1fr))" $mobileColumns="1fr">
         {question.choices.map((choice, index) => {
           const isChosen =
             question.submittedAnswerIndex === index || question.pendingAnswerIndex === index;
@@ -500,7 +590,7 @@ function ResultsView({ results, session, onNextQuestion }) {
   const totalAnswers = results.answerStats.reduce((sum, count) => sum + count, 0);
 
   return (
-    <Grid columns="1.15fr 0.85fr">
+    <Grid columns="1.15fr 0.85fr" $mobileColumns="1fr">
       <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <Eyebrow>Round recap</Eyebrow>
         <div style={{ marginTop: 16 }}>
@@ -509,7 +599,7 @@ function ResultsView({ results, session, onNextQuestion }) {
           </SectionTitle>
         </div>
 
-        <Grid gap="12px" style={{ marginTop: 20 }}>
+        <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 20 }}>
           {results.answerStats.map((count, index) => {
             const isCorrect = index === results.correctAnswer;
             const playerChoice = results.playerAnswer === index;
@@ -545,7 +635,7 @@ function ResultsView({ results, session, onNextQuestion }) {
 
       <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <SectionTitle>Leaderboard</SectionTitle>
-        <Grid gap="12px" style={{ marginTop: 18 }}>
+        <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 18 }}>
           {results.leaderboard.map((player) => (
             <Card key={player.playerId} style={{ padding: 16 }}>
               <HeaderRow style={{ marginBottom: 0 }}>
@@ -578,7 +668,12 @@ function GameEndView({ leaderboard, onLeave }) {
           <Subtitle>Multiplayer round-tripping complete. Everyone saw the same results and final scores.</Subtitle>
         </div>
 
-        <Grid gap="14px" columns="repeat(auto-fit, minmax(220px, 1fr))" style={{ marginTop: 22 }}>
+        <Grid
+          gap="14px"
+          columns="repeat(auto-fit, minmax(220px, 1fr))"
+          $mobileColumns="1fr"
+          style={{ marginTop: 22 }}
+        >
           {podium.map((player) => (
             <Card key={player.playerId} style={{ padding: 22 }}>
               <strong style={{ fontSize: '1.25rem' }}>
@@ -590,7 +685,7 @@ function GameEndView({ leaderboard, onLeave }) {
         </Grid>
 
         {everyoneElse.length ? (
-          <Grid gap="12px" style={{ marginTop: 18 }}>
+          <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 18 }}>
             {everyoneElse.map((player) => (
               <Card key={player.playerId} style={{ padding: 16 }}>
                 <HeaderRow style={{ marginBottom: 0 }}>

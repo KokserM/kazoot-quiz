@@ -67,6 +67,7 @@ export function GameProvider({ children }) {
       setSession((previous) => ({
         ...(previous || {}),
         ...payload,
+        you: payload.you || previous?.you || null,
         playerToken: previous?.playerToken,
         playerId: previous?.playerId,
         isAdmin: payload.you?.isHost ?? previous?.isAdmin,

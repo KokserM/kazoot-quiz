@@ -54,6 +54,7 @@ test('duplicate answer submissions do not inflate the score', async () => {
   try {
     const session = await createSession(runtime.baseUrl);
     const host = connectClient(runtime.baseUrl);
+    const guest = connectClient(runtime.baseUrl);
 
     const hostJoined = onceEvent(host, 'joined-game');
     host.emit('join-game', {
@@ -64,6 +65,13 @@ test('duplicate answer submissions do not inflate the score', async () => {
 
     const hostState = await hostJoined;
     assert.equal(hostState.isAdmin, true);
+
+    const guestJoined = onceEvent(guest, 'joined-game');
+    guest.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Guest',
+    });
+    await guestJoined;
 
     const questionStarted = onceEvent(host, 'question-start');
     host.emit('start-game');
@@ -96,6 +104,7 @@ test('duplicate answer submissions do not inflate the score', async () => {
     assert.equal(player.score, scoreAfterFirstSubmit);
 
     host.disconnect();
+    guest.disconnect();
   } finally {
     await runtime.close();
   }
@@ -132,6 +141,63 @@ test('player tokens allow reconnecting to the same seat', async () => {
     assert.equal(rejoinedPayload.playerId, originalPlayerId);
 
     secondSocket.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('host keeps host identity in session updates', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, '90s Movies');
+    const host = connectClient(runtime.baseUrl);
+
+    const joinedPromise = onceEvent(host, 'joined-game');
+    const sessionUpdatedPromise = onceEvent(host, 'session-updated');
+
+    host.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Host',
+      isCreator: true,
+    });
+
+    const joinedPayload = await joinedPromise;
+    const updatedPayload = await sessionUpdatedPromise;
+
+    assert.equal(joinedPayload.you?.isHost, true);
+    assert.equal(updatedPayload.you?.isHost, true);
+    assert.equal(updatedPayload.playerId, joinedPayload.playerId);
+
+    host.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('host cannot start a game alone', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, '90s Movies');
+    const host = connectClient(runtime.baseUrl);
+
+    const joinedPromise = onceEvent(host, 'joined-game');
+    const errorPromise = onceEvent(host, 'error');
+
+    host.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Host',
+      isCreator: true,
+    });
+
+    await joinedPromise;
+    host.emit('start-game');
+
+    const errorPayload = await errorPromise;
+    assert.equal(errorPayload.message, 'At least two connected players are required to start');
+
+    host.disconnect();
   } finally {
     await runtime.close();
   }

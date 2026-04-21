@@ -64,7 +64,13 @@ class GameService {
   }
 
   emitSessionUpdate(session) {
-    this.io.to(session.id).emit('session-updated', session.toSessionSummary());
+    session.players.forEach((player) => {
+      this.emitToPlayer(player, 'session-updated', {
+        ...session.toSessionSummary(player.playerId),
+        isAdmin: player.isHost,
+        playerId: player.playerId,
+      });
+    });
   }
 
   emitToPlayer(player, eventName, payload) {
@@ -246,8 +252,8 @@ class GameService {
       throw new Error('Game has already started');
     }
 
-    if (session.players.size < 1) {
-      throw new Error('At least one player is required');
+    if (session.getConnectedPlayers().length < 2) {
+      throw new Error('At least two connected players are required to start');
     }
 
     this.startQuestion(session, 0);
