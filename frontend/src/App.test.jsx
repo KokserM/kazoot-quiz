@@ -1,6 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
-import App, { getRemainingQuestionMs, getSessionPhase, shouldShowSessionJoinLoading } from './App';
+import App, {
+  getRemainingQuestionMs,
+  getSessionPhase,
+  shouldAttemptQuestionResync,
+  shouldShowSessionJoinLoading,
+} from './App';
 
 test('renders Kazoot marketing headline', () => {
   render(<App />);
@@ -58,4 +63,22 @@ test('shows loading state instead of join form during auto-join', () => {
       error: '',
     })
   ).toBe(false);
+});
+
+test('only attempts timeout resync when disconnected', () => {
+  expect(
+    shouldAttemptQuestionResync({
+      remainingMs: 0,
+      connectionStatus: 'connected',
+      hasResyncHandler: true,
+    })
+  ).toBe(false);
+
+  expect(
+    shouldAttemptQuestionResync({
+      remainingMs: 0,
+      connectionStatus: 'disconnected',
+      hasResyncHandler: true,
+    })
+  ).toBe(true);
 });

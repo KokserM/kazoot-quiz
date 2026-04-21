@@ -101,6 +101,10 @@ export function shouldShowSessionJoinLoading({ activeSession, joinAttempted, has
   return !activeSession && joinAttempted && hasKnownUsername && !error;
 }
 
+export function shouldAttemptQuestionResync({ remainingMs, connectionStatus, hasResyncHandler }) {
+  return remainingMs === 0 && hasResyncHandler && connectionStatus !== 'connected';
+}
+
 function MarketingHome() {
   const stats = [
     ['10-question rounds', 'Balanced pacing that fits short sessions and party play.'],
@@ -571,7 +575,7 @@ function useSyncedCountdown(question) {
   return remainingMs;
 }
 
-function QuestionView({ question, onSubmitAnswer, onResyncSession }) {
+function QuestionView({ question, onSubmitAnswer, onResyncSession, connectionStatus }) {
   const remainingMs = useSyncedCountdown(question);
   const remainingSeconds = Math.ceil(remainingMs / 1000);
   const progress = question ? Math.max(0, Math.min(1, remainingMs / question.timeLimit)) : 0;
@@ -590,7 +594,13 @@ function QuestionView({ question, onSubmitAnswer, onResyncSession }) {
   );
 
   useEffect(() => {
-    if (remainingMs !== 0 || !onResyncSession) {
+    if (
+      !shouldAttemptQuestionResync({
+        remainingMs,
+        connectionStatus,
+        hasResyncHandler: Boolean(onResyncSession),
+      })
+    ) {
       return undefined;
     }
 
@@ -599,7 +609,7 @@ function QuestionView({ question, onSubmitAnswer, onResyncSession }) {
     }, 1200);
 
     return () => window.clearTimeout(timeoutId);
-  }, [onResyncSession, remainingMs]);
+  }, [connectionStatus, onResyncSession, remainingMs]);
 
   return (
     <Card
@@ -651,8 +661,9 @@ function QuestionView({ question, onSubmitAnswer, onResyncSession }) {
       <Grid gap="12px" columns="repeat(2, minmax(0, 1fr))" $mobileColumns="1fr">
         {question.choices.map((choice, index) => {
           const isChosen = question.submittedAnswerIndex === index || question.pendingAnswerIndex === index;
+          const shouldDimOption = locked && !isChosen;
           const selectionLabel = question.submittedAnswerIndex === index
-            ? 'Locked in'
+            ? '✓'
             : question.pendingAnswerIndex === index
               ? 'Sending...'
               : null;
@@ -668,16 +679,33 @@ function QuestionView({ question, onSubmitAnswer, onResyncSession }) {
                 borderRadius: theme.radii.md,
                 padding: '16px',
                 minHeight: 76,
-                background: isChosen ? `${options[index][1]}` : `${options[index][1]}cc`,
+                background: isChosen ? `${options[index][1]}` : `${options[index][1]}bf`,
                 fontSize: '0.96rem',
                 border: isChosen ? '2px solid rgba(255, 255, 255, 0.55)' : '1px solid rgba(255, 255, 255, 0.08)',
                 boxShadow: isChosen ? '0 0 0 2px rgba(255, 255, 255, 0.08)' : 'none',
+                opacity: shouldDimOption ? 0.42 : 1,
+                filter: shouldDimOption ? 'saturate(0.65) brightness(0.75)' : 'none',
               }}
             >
               <span style={{ marginRight: 10, opacity: 0.9, fontWeight: 800 }}>{options[index][0]}</span>
               <span style={{ textAlign: 'left', flex: 1 }}>{choice}</span>
               {selectionLabel ? (
-                <span style={{ marginLeft: 10, fontSize: '0.82rem', fontWeight: 700, opacity: 0.95 }}>
+                <span
+                  style={{
+                    marginLeft: 10,
+                    minWidth: selectionLabel === '✓' ? 28 : 'auto',
+                    height: selectionLabel === '✓' ? 28 : 'auto',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: selectionLabel === '✓' ? '0' : '0',
+                    borderRadius: selectionLabel === '✓' ? 999 : 0,
+                    background: selectionLabel === '✓' ? 'rgba(255, 255, 255, 0.18)' : 'transparent',
+                    fontSize: selectionLabel === '✓' ? '1rem' : '0.82rem',
+                    fontWeight: 700,
+                    opacity: 0.98,
+                  }}
+                >
                   {selectionLabel}
                 </span>
               ) : null}
@@ -688,7 +716,7 @@ function QuestionView({ question, onSubmitAnswer, onResyncSession }) {
 
       {hasSubmitted || hasPendingSubmission ? (
         <Banner style={{ marginTop: 14, marginBottom: 0 }}>
-          Answer locked in. Waiting for the server to reveal the result.
+          {hasSubmitted ? '✓ Answer submitted. Waiting for the server to reveal the result.' : 'Sending your answer...'}
         </Banner>
       ) : remainingMs === 0 ? (
         <Banner style={{ marginTop: 14, marginBottom: 0 }}>
@@ -1024,6 +1052,7 @@ function SessionPage() {
                 question={question}
                 onSubmitAnswer={submitAnswer}
                 onResyncSession={resyncSession}
+                connectionStatus={connectionStatus}
               />
             ) : null}
             {showResultsShell ? (
