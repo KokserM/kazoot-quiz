@@ -16,6 +16,10 @@ function normalizeQuestionPayload(payload) {
 
   return {
     ...normalizedPayload,
+    clientReceivedAt:
+      typeof normalizedPayload.clientReceivedAt === 'number'
+        ? normalizedPayload.clientReceivedAt
+        : Date.now(),
     submittedAnswerIndex:
       typeof normalizedPayload.submittedAnswerIndex === 'number'
         ? normalizedPayload.submittedAnswerIndex
@@ -107,7 +111,13 @@ export function GameProvider({ children }) {
       if (payload.gameState === 'question' && payload.activePhaseData) {
         setQuestion((previous) => {
           if (previous?.roundId === payload.activePhaseData.roundId) {
-            return previous;
+            return {
+              ...previous,
+              submittedAnswerIndex:
+                typeof payload.activePhaseData.submittedAnswerIndex === 'number'
+                  ? payload.activePhaseData.submittedAnswerIndex
+                  : previous.submittedAnswerIndex,
+            };
           }
 
           return normalizeQuestionPayload(payload.activePhaseData);

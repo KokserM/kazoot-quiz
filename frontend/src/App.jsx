@@ -61,6 +61,42 @@ function getConnectionTone(connectionStatus) {
   return connectionStatus === 'connected' ? 'success' : 'warning';
 }
 
+export function getQuestionClockOffset(question, now = Date.now()) {
+  if (!question) {
+    return 0;
+  }
+
+  return (question.serverTime || now) - (question.clientReceivedAt || now);
+}
+
+export function getRemainingQuestionMs(question, now = Date.now()) {
+  if (!question) {
+    return 0;
+  }
+
+  return Math.max(0, question.questionEndsAt - (now + getQuestionClockOffset(question, now)));
+}
+
+export function getSessionPhase({ activeSession, question, results, gameEnd }) {
+  if (gameEnd) {
+    return 'ended';
+  }
+
+  if (results) {
+    return 'results';
+  }
+
+  if (question) {
+    return 'question';
+  }
+
+  if (activeSession?.gameState === 'waiting') {
+    return 'waiting';
+  }
+
+  return 'idle';
+}
+
 function MarketingHome() {
   const stats = [
     ['10-question rounds', 'Balanced pacing that fits short sessions and party play.'],
@@ -510,11 +546,7 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
 
 function useSyncedCountdown(question) {
   const [remainingMs, setRemainingMs] = useState(() => {
-    if (!question) {
-      return 0;
-    }
-    const offset = (question.serverTime || Date.now()) - Date.now();
-    return Math.max(0, question.questionEndsAt - (Date.now() + offset));
+    return getRemainingQuestionMs(question);
   });
 
   useEffect(() => {
@@ -523,15 +555,14 @@ function useSyncedCountdown(question) {
       return;
     }
 
-    const offset = (question.serverTime || Date.now()) - Date.now();
     const tick = () => {
-      setRemainingMs(Math.max(0, question.questionEndsAt - (Date.now() + offset)));
+      setRemainingMs(getRemainingQuestionMs(question));
     };
 
     tick();
     const intervalId = setInterval(tick, 250);
     return () => clearInterval(intervalId);
-  }, [question]);
+  }, [question?.questionEndsAt, question?.serverTime, question?.clientReceivedAt]);
 
   return remainingMs;
 }
@@ -872,10 +903,16 @@ function SessionPage() {
   }
 
   const activeSession = session?.sessionId === normalizedSessionId ? session : null;
-  const showLobbyShell = activeSession?.gameState === 'waiting';
-  const showGameplayShell = activeSession?.gameState === 'question' && question;
-  const showResultsShell = activeSession?.gameState === 'results' && results;
-  const showGameEndShell = activeSession?.gameState === 'ended' && gameEnd;
+  const phase = getSessionPhase({
+    activeSession,
+    question,
+    results,
+    gameEnd,
+  });
+  const showLobbyShell = phase === 'waiting';
+  const showGameplayShell = phase === 'question';
+  const showResultsShell = phase === 'results';
+  const showGameEndShell = phase === 'ended';
 
   return (
     <Shell dense={Boolean(activeSession && !showLobbyShell)}>
