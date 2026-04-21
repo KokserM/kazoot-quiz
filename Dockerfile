@@ -1,33 +1,31 @@
-# Use Node.js 18 LTS
-FROM node:18-alpine
+FROM node:20-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy all package files first
-COPY package*.json ./
 COPY frontend/package*.json ./frontend/
 COPY backend/package*.json ./backend/
+COPY package*.json ./
 
-# Install frontend dependencies
-WORKDIR /app/frontend
-RUN npm install
+RUN cd frontend && npm ci
+RUN cd backend && npm ci
+RUN npm ci
 
-# Install backend dependencies
-WORKDIR /app/backend
-RUN npm install
-
-# Go back to app root and copy source code
-WORKDIR /app
 COPY . .
 
-# Build frontend
-WORKDIR /app/frontend
-RUN npm run build
+RUN cd frontend && npm run build
 
-# Expose port
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/backend/package*.json ./backend/
+RUN cd backend && npm ci --omit=dev
+
+COPY --from=builder /app/backend ./backend
+COPY --from=builder /app/frontend/dist ./frontend/dist
+
 EXPOSE 5000
 
-# Start the application from backend directory
 WORKDIR /app/backend
-CMD ["node", "server.js"] 
+CMD ["node", "server.js"]

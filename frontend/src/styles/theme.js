@@ -1,0 +1,38 @@
+export const theme = {
+  colors: {
+    background: '#080b16',
+    backgroundAccent: '#121931',
+    surface: 'rgba(10, 18, 39, 0.88)',
+    surfaceMuted: 'rgba(20, 31, 60, 0.76)',
+    border: 'rgba(148, 163, 184, 0.18)',
+    text: '#f8fafc',
+    textMuted: '#cbd5e1',
+    textSoft: '#94a3b8',
+    primary: '#7c3aed',
+    primaryBright: '#8b5cf6',
+    secondary: '#22c55e',
+    danger: '#ef4444',
+    warning: '#f59e0b',
+    info: '#38bdf8',
+    optionA: '#ef4444',
+    optionB: '#06b6d4',
+    optionC: '#f59e0b',
+    optionD: '#22c55e',
+  },
+  gradients: {
+    hero: 'radial-gradient(circle at top, rgba(124, 58, 237, 0.28), transparent 40%), linear-gradient(180deg, #0b1020 0%, #060912 100%)',
+    card: 'linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(9, 14, 28, 0.92))',
+    primary: 'linear-gradient(135deg, #8b5cf6 0%, #4f46e5 100%)',
+    accent: 'linear-gradient(135deg, rgba(56, 189, 248, 0.24), rgba(124, 58, 237, 0.2))',
+  },
+  radii: {
+    lg: '28px',
+    md: '20px',
+    sm: '14px',
+    pill: '999px',
+  },
+  shadows: {
+    glow: '0 24px 80px rgba(2, 6, 23, 0.5)',
+    card: '0 18px 45px rgba(2, 6, 23, 0.35)',
+  },
+};

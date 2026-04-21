@@ -1,84 +1,78 @@
 # Deploying Kazoot to Railway
 
-This guide will help you deploy your Kazoot Kahoot-style quiz application to Railway.
+Kazoot is designed to run as a single Railway service that serves the built frontend, the REST API, and the Socket.IO server from the same Node process.
 
-## Prerequisites
+## Railway model
 
-1. A Railway account (sign up at [railway.app](https://railway.app))
-2. Git repository with your code
-3. (Optional) OpenAI API key for AI-generated questions
+- One Railway service
+- One Node process
+- In-memory sessions
+- Reconnect support while the process stays alive
+- No cross-instance session sharing yet
 
-## Step-by-Step Deployment
+This is the intended production boundary for the current version.
 
-### 1. Connect to Railway
+## Required environment variables
 
-1. Visit [railway.app](https://railway.app) and sign in
-2. Click "New Project"
-3. Select "Deploy from GitHub repo"
-4. Choose your kazoot-kahoot repository
+Set these in Railway:
 
-### 2. Configure Environment Variables
-
-In your Railway project dashboard, go to the Variables tab and add:
-
-**Required:**
-- `NODE_ENV` = `production`
-- `PORT` = `5000` (or leave empty, Railway will set automatically)
-
-**Optional (for AI-generated questions):**
-- `OPENAI_API_KEY` = `your_openai_api_key_here`
-
-**Note:** If you don't provide an OpenAI API key, the app will use demo questions.
-
-### 3. Build Configuration
-
-Railway will automatically detect this is a Node.js project and:
-- Run `npm run build` to build the frontend
-- Run `npm start` to start the server
-- The server will serve both the API and the built React frontend
-
-### 4. Custom Domain (Optional)
-
-1. In Railway dashboard, go to Settings > Domains
-2. Click "Generate Domain" for a free Railway subdomain
-3. Or add your custom domain
-
-## Environment Variables Reference
-
-```
+```text
 NODE_ENV=production
-PORT=5000
-OPENAI_API_KEY=sk-... (optional)
+FRONTEND_URL=https://your-service-or-custom-domain
+OPENAI_API_KEY=sk-...         # optional
+OPENAI_MODEL=gpt-5.4          # optional
+QUESTION_TIME_LIMIT_MS=20000  # optional
+SESSION_RETENTION_MS=1800000  # optional
+ENDED_SESSION_RETENTION_MS=600000  # optional
 ```
 
-## Architecture
+Notes:
 
-- **Backend**: Express.js server with Socket.io for real-time communication
-- **Frontend**: React app built and served as static files
-- **Database**: In-memory storage (sessions reset on server restart)
-- **Real-time**: WebSocket connections for live gameplay
+- Do not hardcode `PORT` in Railway. The platform injects it automatically.
+- If `OPENAI_API_KEY` is missing, Kazoot falls back to demo question sets.
+- `FRONTEND_URL` should match the public domain you want to allow through CORS.
+
+## Build and start behavior
+
+Railway uses `nixpacks.toml` in this repo to:
+
+1. Run `npm ci` in the root, `frontend`, and `backend`
+2. Build the Vite frontend with `cd frontend && npm run build`
+3. Start the backend with `cd backend && node server.js`
+
+The backend serves `frontend/dist` in production.
+
+## What to expect in production
+
+- Players can reconnect to the same session with their saved player token.
+- Question timing is server-authoritative and synced to the client with `questionEndsAt` and `serverTime`.
+- Host changes are broadcast automatically if the current host disconnects.
+- Sessions are cleaned up after inactivity.
+
+## Verification checklist
+
+After deploy, verify:
+
+1. `GET /health` returns `200`
+2. Creating a session succeeds
+3. Joining from two browsers updates the lobby in real time
+4. Refreshing a player tab reconnects the player instead of duplicating them
+5. Finishing a round shows identical results to all players
 
 ## Troubleshooting
 
-### Build Issues
-- Ensure all dependencies are in package.json
-- Check build logs in Railway dashboard
+### Session resets after restart
 
-### Runtime Issues
-- Check application logs in Railway dashboard
-- Verify environment variables are set correctly
+That is expected with the current single-instance in-memory architecture. Add Redis or a database later if you need restart-safe sessions.
 
-### WebSocket Issues
-- Railway supports WebSocket connections by default
-- Ensure CORS is configured for your domain
+### WebSockets do not connect
 
-## Features
+- Confirm the app is being served from the same Railway service as the API
+- Verify `FRONTEND_URL` matches the public origin
+- Check Railway logs for CORS errors
 
-- ✅ Real-time multiplayer quiz game
-- ✅ AI-generated questions (with OpenAI API)
-- ✅ Demo questions (works without API key)
-- ✅ Admin controls for game management
-- ✅ Live leaderboards and scoring
-- ✅ Responsive design for all devices
+### GPT-5.4 generation falls back to demo data
 
-Your app will be accessible at: `https://your-project-name.railway.app` 
+- Confirm `OPENAI_API_KEY` is present and valid
+- Check the server logs for OpenAI errors
+- Make sure your account has access to `gpt-5.4`

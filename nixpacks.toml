@@ -6,17 +6,14 @@ nixPkgs = ["nodejs", "npm"]
 
 [phases.install]
 cmds = [
-    "echo 'Installing frontend dependencies...'",
-    "cd frontend && npm install --production=false",
-    "echo 'Installing backend dependencies...'", 
-    "cd backend && npm install"
+    "cd frontend && npm ci",
+    "cd backend && npm ci",
+    "npm ci"
 ]
 
 [phases.build]
 cmds = [
-    "echo 'Building frontend...'",
-    "cd frontend && npm run build",
-    "echo 'Build completed successfully!'"
+    "cd frontend && npm run build"
 ]
 
 [phases.start]
