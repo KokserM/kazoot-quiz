@@ -69,6 +69,7 @@ class GameService {
         ...session.toSessionSummary(player.playerId),
         isAdmin: player.isHost,
         playerId: player.playerId,
+        activePhaseData: this.buildPhaseSnapshot(session, player),
       });
     });
   }
@@ -115,6 +116,24 @@ class GameService {
       playerAnswer: playerAnswer ? playerAnswer.answerIndex : null,
       allChoices: currentQuestion.choices,
     };
+  }
+
+  buildPhaseSnapshot(session, player) {
+    if (session.gameState === 'question') {
+      return this.buildQuestionPayload(session, player);
+    }
+
+    if (session.gameState === 'results') {
+      return this.buildResultsPayload(session, player);
+    }
+
+    if (session.gameState === 'ended') {
+      return {
+        leaderboard: session.toSessionSummary().leaderboard,
+      };
+    }
+
+    return null;
   }
 
   emitPhaseSnapshot(session, player) {

@@ -5,8 +5,31 @@ import { clearPlayerSession, loadPlayerSession, savePlayerSession } from '../lib
 
 const GameContext = createContext(null);
 
+function normalizeQuestionPayload(payload) {
+  if (!payload) {
+    return null;
+  }
+
+  const normalizedPayload = {
+    ...payload,
+  };
+
+  return {
+    ...normalizedPayload,
+    submittedAnswerIndex:
+      typeof normalizedPayload.submittedAnswerIndex === 'number'
+        ? normalizedPayload.submittedAnswerIndex
+        : null,
+    pendingAnswerIndex:
+      typeof normalizedPayload.pendingAnswerIndex === 'number'
+        ? normalizedPayload.pendingAnswerIndex
+        : null,
+  };
+}
+
 export function GameProvider({ children }) {
   const socketRef = useRef(null);
+  const questionRef = useRef(null);
   const notificationTimerRef = useRef(null);
   const [session, setSession] = useState(null);
   const [question, setQuestion] = useState(null);
@@ -15,6 +38,10 @@ export function GameProvider({ children }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
+
+  useEffect(() => {
+    questionRef.current = question;
+  }, [question]);
 
   const showNotice = useCallback((message) => {
     if (!message) {
@@ -64,18 +91,46 @@ export function GameProvider({ children }) {
     });
 
     socket.on('session-updated', (payload) => {
-      setSession((previous) => ({
-        ...(previous || {}),
-        ...payload,
-        you: payload.you || previous?.you || null,
-        playerToken: previous?.playerToken,
-        playerId: previous?.playerId,
-        isAdmin: payload.you?.isHost ?? previous?.isAdmin,
-      }));
+      setSession((previous) => {
+        const nextSession = {
+          ...(previous || {}),
+          ...payload,
+          you: payload.you || previous?.you || null,
+          playerToken: previous?.playerToken,
+          playerId: previous?.playerId,
+          isAdmin: payload.you?.isHost ?? previous?.isAdmin,
+        };
+
+        return nextSession;
+      });
+
+      if (payload.gameState === 'question' && payload.activePhaseData) {
+        setQuestion((previous) => {
+          if (previous?.roundId === payload.activePhaseData.roundId) {
+            return previous;
+          }
+
+          return normalizeQuestionPayload(payload.activePhaseData);
+        });
+        setResults(null);
+        setGameEnd(null);
+      }
+
+      if (payload.gameState === 'results' && payload.activePhaseData) {
+        setResults(payload.activePhaseData);
+        setQuestion(null);
+        setGameEnd(null);
+      }
+
+      if (payload.gameState === 'ended' && payload.activePhaseData) {
+        setGameEnd(payload.activePhaseData);
+        setQuestion(null);
+        setResults(null);
+      }
     });
 
     socket.on('question-start', (payload) => {
-      setQuestion(payload);
+      setQuestion(normalizeQuestionPayload(payload));
       setResults(null);
       setGameEnd(null);
     });
@@ -100,7 +155,11 @@ export function GameProvider({ children }) {
         return {
           ...previous,
           submittedAnswerIndex:
-            previous.submittedAnswerIndex ?? (payload.alreadySubmitted ? previous.submittedAnswerIndex : previous.pendingAnswerIndex),
+            typeof previous.submittedAnswerIndex === 'number'
+              ? previous.submittedAnswerIndex
+              : payload.alreadySubmitted
+                ? previous.submittedAnswerIndex
+                : previous.pendingAnswerIndex,
           pendingAnswerIndex: null,
         };
       });
@@ -143,6 +202,16 @@ export function GameProvider({ children }) {
     });
 
     socket.on('error', ({ message }) => {
+      setQuestion((previous) => {
+        if (!previous) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          pendingAnswerIndex: null,
+        };
+      });
       setError(message || 'Something went wrong');
     });
 
@@ -190,7 +259,7 @@ export function GameProvider({ children }) {
   const submitAnswer = useCallback(
     (answerIndex) => {
       setQuestion((previous) => {
-        if (!previous || previous.submittedAnswerIndex !== null) {
+        if (!previous || typeof previous.submittedAnswerIndex === 'number') {
           return previous;
         }
 
@@ -202,10 +271,10 @@ export function GameProvider({ children }) {
 
       ensureSocket().emit('submit-answer', {
         answerIndex,
-        roundId: question?.roundId,
+        roundId: questionRef.current?.roundId,
       });
     },
-    [ensureSocket, question]
+    [ensureSocket]
   );
 
   const nextQuestion = useCallback(() => {

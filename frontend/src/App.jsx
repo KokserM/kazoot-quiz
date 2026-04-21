@@ -31,9 +31,9 @@ import {
   Title,
 } from './components/ui';
 
-function Shell({ children }) {
+function Shell({ children, dense = false }) {
   return (
-    <PageShell>
+    <PageShell $dense={dense}>
       <CenteredContent>{children}</CenteredContent>
     </PageShell>
   );
@@ -51,6 +51,14 @@ function MobileOnlyHint({ children }) {
       {children}
     </div>
   );
+}
+
+function hasAnswerSelection(value) {
+  return typeof value === 'number';
+}
+
+function getConnectionTone(connectionStatus) {
+  return connectionStatus === 'connected' ? 'success' : 'warning';
 }
 
 function MarketingHome() {
@@ -385,6 +393,32 @@ function SessionHeader({ session, connectionStatus }) {
   );
 }
 
+function GameplayTopBar({ session, connectionStatus, questionNumber, totalQuestions }) {
+  return (
+    <Card
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={{
+        padding: '14px 16px',
+      }}
+    >
+      <HeaderRow style={{ marginBottom: 0, alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <Eyebrow>Room {session.sessionId}</Eyebrow>
+          <StatChip>
+            Question {questionNumber} of {totalQuestions}
+          </StatChip>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <Pill $tone={getConnectionTone(connectionStatus)}>
+            {connectionStatus === 'connected' ? 'Live connection' : 'Reconnecting...'}
+          </Pill>
+        </div>
+      </HeaderRow>
+    </Card>
+  );
+}
+
 function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
   const shareLink = `${window.location.origin}/session/${session.sessionId}`;
   const canStart = session.you?.isHost && session.connectedPlayerCount >= 2;
@@ -506,7 +540,9 @@ function QuestionView({ question, onSubmitAnswer }) {
   const remainingMs = useSyncedCountdown(question);
   const remainingSeconds = Math.ceil(remainingMs / 1000);
   const progress = question ? Math.max(0, Math.min(1, remainingMs / question.timeLimit)) : 0;
-  const locked = question?.submittedAnswerIndex !== null || question?.pendingAnswerIndex !== null || remainingMs === 0;
+  const hasSubmitted = hasAnswerSelection(question?.submittedAnswerIndex);
+  const hasPendingSubmission = hasAnswerSelection(question?.pendingAnswerIndex);
+  const locked = hasSubmitted || hasPendingSubmission || remainingMs === 0;
 
   const options = useMemo(
     () => [
@@ -519,23 +555,35 @@ function QuestionView({ question, onSubmitAnswer }) {
   );
 
   return (
-    <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-      <HeaderRow>
-        <div>
-          <Eyebrow>
-            Question {question.questionNumber} of {question.totalQuestions}
-          </Eyebrow>
-          <div style={{ marginTop: 14 }}>
-            <SectionTitle>{question.question}</SectionTitle>
-          </div>
+    <Card
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={{
+        padding: '18px',
+      }}
+    >
+      <div style={{ marginBottom: 16 }}>
+        <SectionTitle style={{ fontSize: 'clamp(1.45rem, 4vw, 2.5rem)', lineHeight: 1.08 }}>
+          {question.question}
+        </SectionTitle>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: '1.1rem',
+            textAlign: 'right',
+            marginBottom: 8,
+          }}
+        >
+          {remainingSeconds}s
         </div>
-        <div style={{ minWidth: 0, width: '100%', maxWidth: 220 }}>
-          <div style={{ fontWeight: 700, fontSize: '1.5rem', textAlign: 'right' }}>{remainingSeconds}s</div>
+        <div style={{ minWidth: 0, width: '100%' }}>
           <div
             aria-hidden="true"
             style={{
-              marginTop: 10,
-              height: 10,
+              height: 8,
               borderRadius: 999,
               overflow: 'hidden',
               background: 'rgba(148, 163, 184, 0.16)',
@@ -551,12 +599,11 @@ function QuestionView({ question, onSubmitAnswer }) {
             />
           </div>
         </div>
-      </HeaderRow>
+      </div>
 
-      <Grid gap="14px" columns="repeat(auto-fit, minmax(240px, 1fr))" $mobileColumns="1fr">
+      <Grid gap="12px" columns="repeat(2, minmax(0, 1fr))" $mobileColumns="1fr">
         {question.choices.map((choice, index) => {
-          const isChosen =
-            question.submittedAnswerIndex === index || question.pendingAnswerIndex === index;
+          const isChosen = question.submittedAnswerIndex === index || question.pendingAnswerIndex === index;
           return (
             <Button
               key={`${choice}-${index}`}
@@ -567,20 +614,27 @@ function QuestionView({ question, onSubmitAnswer }) {
               style={{
                 justifyContent: 'flex-start',
                 borderRadius: theme.radii.md,
-                padding: '20px',
-                minHeight: 94,
+                padding: '16px',
+                minHeight: 76,
                 background: isChosen ? `${options[index][1]}` : `${options[index][1]}cc`,
+                fontSize: '0.96rem',
               }}
             >
-              <span style={{ marginRight: 12, opacity: 0.9 }}>{options[index][0]}</span>
+              <span style={{ marginRight: 10, opacity: 0.9, fontWeight: 800 }}>{options[index][0]}</span>
               <span style={{ textAlign: 'left' }}>{choice}</span>
             </Button>
           );
         })}
       </Grid>
 
-      {question.submittedAnswerIndex !== null || question.pendingAnswerIndex !== null ? (
-        <Banner style={{ marginTop: 18 }}>Answer locked in. Waiting for the server to reveal the result.</Banner>
+      {hasSubmitted || hasPendingSubmission ? (
+        <Banner style={{ marginTop: 14, marginBottom: 0 }}>
+          Answer locked in. Waiting for the server to reveal the result.
+        </Banner>
+      ) : remainingMs === 0 ? (
+        <Banner style={{ marginTop: 14, marginBottom: 0 }}>
+          Time is up. Waiting for the round result from the server.
+        </Banner>
       ) : null}
     </Card>
   );
@@ -818,18 +872,33 @@ function SessionPage() {
   }
 
   const activeSession = session?.sessionId === normalizedSessionId ? session : null;
+  const showLobbyShell = activeSession?.gameState === 'waiting';
+  const showGameplayShell = activeSession?.gameState === 'question' && question;
+  const showResultsShell = activeSession?.gameState === 'results' && results;
+  const showGameEndShell = activeSession?.gameState === 'ended' && gameEnd;
 
   return (
-    <Shell>
+    <Shell dense={Boolean(activeSession && !showLobbyShell)}>
       <Grid gap="16px">
         {notice ? <Banner>{notice}</Banner> : null}
         {error ? <Banner $tone="danger">{error}</Banner> : null}
 
         {activeSession ? (
           <>
-            <SessionHeader session={activeSession} connectionStatus={connectionStatus} />
+            {showLobbyShell ? (
+              <SessionHeader session={activeSession} connectionStatus={connectionStatus} />
+            ) : null}
 
-            {activeSession.gameState === 'waiting' ? (
+            {showGameplayShell ? (
+              <GameplayTopBar
+                session={activeSession}
+                connectionStatus={connectionStatus}
+                questionNumber={question.questionNumber}
+                totalQuestions={question.totalQuestions}
+              />
+            ) : null}
+
+            {showLobbyShell ? (
               <LobbyView
                 session={activeSession}
                 onStartGame={startGame}
@@ -838,11 +907,11 @@ function SessionPage() {
               />
             ) : null}
 
-            {question ? <QuestionView question={question} onSubmitAnswer={submitAnswer} /> : null}
-            {results ? (
+            {showGameplayShell ? <QuestionView question={question} onSubmitAnswer={submitAnswer} /> : null}
+            {showResultsShell ? (
               <ResultsView results={results} session={activeSession} onNextQuestion={nextQuestion} />
             ) : null}
-            {gameEnd ? (
+            {showGameEndShell ? (
               <GameEndView leaderboard={gameEnd.leaderboard} onLeave={handleGoHome} />
             ) : null}
           </>

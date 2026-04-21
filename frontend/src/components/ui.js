@@ -3,10 +3,10 @@ import { motion } from 'framer-motion';
 
 export const PageShell = styled.div`
   min-height: 100vh;
-  padding: 32px 20px 56px;
+  padding: ${({ $dense = false }) => ($dense ? '14px 14px 20px' : '32px 20px 56px')};
 
   @media (max-width: 768px) {
-    padding: 16px 12px 28px;
+    padding: ${({ $dense = false }) => ($dense ? '8px 8px 14px' : '16px 12px 28px')};
   }
 `;
 
