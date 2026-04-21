@@ -114,6 +114,8 @@ class GameService {
       leaderboard,
       isLastQuestion: session.currentQuestionIndex === session.questions.length - 1,
       playerAnswer: playerAnswer ? playerAnswer.answerIndex : null,
+      earnedPoints: playerAnswer ? playerAnswer.points : 0,
+      answerWasCorrect: playerAnswer ? playerAnswer.isCorrect : false,
       allChoices: currentQuestion.choices,
     };
   }
@@ -269,10 +271,6 @@ class GameService {
 
     if (session.gameState !== 'waiting') {
       throw new Error('Game has already started');
-    }
-
-    if (session.getConnectedPlayers().length < 2) {
-      throw new Error('At least two connected players are required to start');
     }
 
     this.startQuestion(session, 0);

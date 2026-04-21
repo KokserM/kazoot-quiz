@@ -184,7 +184,7 @@ test('host keeps host identity in session updates', async () => {
   }
 });
 
-test('host cannot start a game alone', async () => {
+test('host can start a game alone', async () => {
   const runtime = await startTestServer();
 
   try {
@@ -192,7 +192,7 @@ test('host cannot start a game alone', async () => {
     const host = connectClient(runtime.baseUrl);
 
     const joinedPromise = onceEventWithTimeout(host, 'joined-game');
-    const errorPromise = onceEventWithTimeout(host, 'error');
+    const questionPromise = onceEventWithTimeout(host, 'question-start');
 
     host.emit('join-game', {
       sessionId: session.sessionId,
@@ -203,8 +203,9 @@ test('host cannot start a game alone', async () => {
     await joinedPromise;
     host.emit('start-game');
 
-    const errorPayload = await errorPromise;
-    assert.equal(errorPayload.message, 'At least two connected players are required to start');
+    const questionPayload = await questionPromise;
+    assert.equal(questionPayload.questionNumber, 1);
+    assert.equal(questionPayload.totalQuestions, 10);
 
     host.disconnect();
   } finally {

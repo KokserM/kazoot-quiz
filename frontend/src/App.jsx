@@ -97,6 +97,10 @@ export function getSessionPhase({ activeSession, question, results, gameEnd }) {
   return 'idle';
 }
 
+export function shouldShowSessionJoinLoading({ activeSession, joinAttempted, hasKnownUsername, error }) {
+  return !activeSession && joinAttempted && hasKnownUsername && !error;
+}
+
 function MarketingHome() {
   const stats = [
     ['10-question rounds', 'Balanced pacing that fits short sessions and party play.'],
@@ -129,7 +133,7 @@ function MarketingHome() {
         </div>
         <ButtonRow style={{ marginTop: 28 }}>
           <Button as={Link} to="/create">
-            Host a premium game
+            Host a game
           </Button>
           <Button as={Link} to="/join" variant="secondary">
             Join by code
@@ -457,7 +461,7 @@ function GameplayTopBar({ session, connectionStatus, questionNumber, totalQuesti
 
 function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
   const shareLink = `${window.location.origin}/session/${session.sessionId}`;
-  const canStart = session.you?.isHost && session.connectedPlayerCount >= 2;
+  const canStart = session.you?.isHost;
 
   async function copyLink() {
     await navigator.clipboard.writeText(shareLink);
@@ -504,8 +508,8 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
           <MobileOnlyHint>
             {session.you?.isHost
               ? canStart
-                ? 'Only the host can start the game. Everyone else joins the lobby and waits for kickoff.'
-                : 'Only the host can start the game, and you need at least one more connected player before kickoff.'
+                ? 'Only the host can start the game. You can kick off immediately or wait for more players to join.'
+                : 'Only the host can start the game.'
               : 'Only the host can start the game. You will move into the quiz as soon as the host begins.'}
           </MobileOnlyHint>
         </div>
@@ -567,7 +571,7 @@ function useSyncedCountdown(question) {
   return remainingMs;
 }
 
-function QuestionView({ question, onSubmitAnswer }) {
+function QuestionView({ question, onSubmitAnswer, onResyncSession }) {
   const remainingMs = useSyncedCountdown(question);
   const remainingSeconds = Math.ceil(remainingMs / 1000);
   const progress = question ? Math.max(0, Math.min(1, remainingMs / question.timeLimit)) : 0;
@@ -584,6 +588,18 @@ function QuestionView({ question, onSubmitAnswer }) {
     ],
     []
   );
+
+  useEffect(() => {
+    if (remainingMs !== 0 || !onResyncSession) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      onResyncSession();
+    }, 1200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [onResyncSession, remainingMs]);
 
   return (
     <Card
@@ -635,6 +651,11 @@ function QuestionView({ question, onSubmitAnswer }) {
       <Grid gap="12px" columns="repeat(2, minmax(0, 1fr))" $mobileColumns="1fr">
         {question.choices.map((choice, index) => {
           const isChosen = question.submittedAnswerIndex === index || question.pendingAnswerIndex === index;
+          const selectionLabel = question.submittedAnswerIndex === index
+            ? 'Locked in'
+            : question.pendingAnswerIndex === index
+              ? 'Sending...'
+              : null;
           return (
             <Button
               key={`${choice}-${index}`}
@@ -649,10 +670,17 @@ function QuestionView({ question, onSubmitAnswer }) {
                 minHeight: 76,
                 background: isChosen ? `${options[index][1]}` : `${options[index][1]}cc`,
                 fontSize: '0.96rem',
+                border: isChosen ? '2px solid rgba(255, 255, 255, 0.55)' : '1px solid rgba(255, 255, 255, 0.08)',
+                boxShadow: isChosen ? '0 0 0 2px rgba(255, 255, 255, 0.08)' : 'none',
               }}
             >
               <span style={{ marginRight: 10, opacity: 0.9, fontWeight: 800 }}>{options[index][0]}</span>
-              <span style={{ textAlign: 'left' }}>{choice}</span>
+              <span style={{ textAlign: 'left', flex: 1 }}>{choice}</span>
+              {selectionLabel ? (
+                <span style={{ marginLeft: 10, fontSize: '0.82rem', fontWeight: 700, opacity: 0.95 }}>
+                  {selectionLabel}
+                </span>
+              ) : null}
             </Button>
           );
         })}
@@ -683,19 +711,46 @@ function ResultsView({ results, session, onNextQuestion }) {
             Correct answer: {String.fromCharCode(65 + results.correctAnswer)}. {results.correctAnswerText}
           </SectionTitle>
         </div>
+        {typeof results.playerAnswer === 'number' ? (
+          <Banner $tone={results.answerWasCorrect ? 'success' : undefined} style={{ marginTop: 16 }}>
+            {results.answerWasCorrect ? 'You got it right.' : 'Your answer is highlighted below.'}
+            {' '}
+            {typeof results.earnedPoints === 'number' ? `+${results.earnedPoints} pts this round.` : null}
+          </Banner>
+        ) : (
+          <Banner style={{ marginTop: 16 }}>You did not lock in an answer before time ran out.</Banner>
+        )}
 
         <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 20 }}>
           {results.answerStats.map((count, index) => {
             const isCorrect = index === results.correctAnswer;
             const playerChoice = results.playerAnswer === index;
+            const optionTone = isCorrect ? 'success' : playerChoice ? 'warning' : undefined;
+            const optionLabel = isCorrect && playerChoice
+              ? 'Correct answer • Your pick'
+              : isCorrect
+                ? 'Correct answer'
+                : playerChoice
+                  ? 'Your pick'
+                  : `${count} picks`;
             return (
-              <Card key={index} style={{ padding: 18 }}>
+              <Card
+                key={index}
+                style={{
+                  padding: 18,
+                  borderColor: isCorrect
+                    ? 'rgba(34, 197, 94, 0.4)'
+                    : playerChoice
+                      ? 'rgba(245, 158, 11, 0.35)'
+                      : undefined,
+                }}
+              >
                 <HeaderRow style={{ marginBottom: 10 }}>
                   <strong>
                     {String.fromCharCode(65 + index)}. {results.allChoices[index]}
                   </strong>
-                  <Pill $tone={isCorrect ? 'success' : playerChoice ? 'danger' : undefined}>
-                    {isCorrect ? 'Correct' : playerChoice ? 'Your answer' : `${count} picks`}
+                  <Pill $tone={optionTone}>
+                    {optionLabel}
                   </Pill>
                 </HeaderRow>
                 <Subtitle>
@@ -832,6 +887,18 @@ function JoinSessionCard({ sessionId, defaultUsername, onJoin }) {
   );
 }
 
+function JoiningSessionCard({ sessionId }) {
+  return (
+    <EmptyState initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+      <SectionTitle>Joining room {sessionId}</SectionTitle>
+      <Subtitle style={{ marginTop: 8 }}>
+        Syncing your seat and loading the live room state.
+      </Subtitle>
+      <Banner style={{ marginTop: 20, marginBottom: 0 }}>Loading the lobby...</Banner>
+    </EmptyState>
+  );
+}
+
 function SessionPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -850,6 +917,7 @@ function SessionPage() {
     nextQuestion,
     notice,
     question,
+    resyncSession,
     results,
     session,
     startGame,
@@ -903,6 +971,13 @@ function SessionPage() {
   }
 
   const activeSession = session?.sessionId === normalizedSessionId ? session : null;
+  const hasKnownUsername = Boolean(sessionState.username || savedSession?.username);
+  const showJoinLoading = shouldShowSessionJoinLoading({
+    activeSession,
+    joinAttempted: joinAttemptedRef.current,
+    hasKnownUsername,
+    error,
+  });
   const phase = getSessionPhase({
     activeSession,
     question,
@@ -916,7 +991,7 @@ function SessionPage() {
 
   return (
     <Shell dense={Boolean(activeSession && !showLobbyShell)}>
-      <Grid gap="16px">
+      <Grid gap="16px" columns="1fr" $mobileColumns="1fr">
         {notice ? <Banner>{notice}</Banner> : null}
         {error ? <Banner $tone="danger">{error}</Banner> : null}
 
@@ -944,7 +1019,13 @@ function SessionPage() {
               />
             ) : null}
 
-            {showGameplayShell ? <QuestionView question={question} onSubmitAnswer={submitAnswer} /> : null}
+            {showGameplayShell ? (
+              <QuestionView
+                question={question}
+                onSubmitAnswer={submitAnswer}
+                onResyncSession={resyncSession}
+              />
+            ) : null}
             {showResultsShell ? (
               <ResultsView results={results} session={activeSession} onNextQuestion={nextQuestion} />
             ) : null}
@@ -952,6 +1033,8 @@ function SessionPage() {
               <GameEndView leaderboard={gameEnd.leaderboard} onLeave={handleGoHome} />
             ) : null}
           </>
+        ) : showJoinLoading ? (
+          <JoiningSessionCard sessionId={normalizedSessionId} />
         ) : (
           <JoinSessionCard
             sessionId={normalizedSessionId}

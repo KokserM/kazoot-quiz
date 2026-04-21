@@ -34,7 +34,10 @@ function normalizeQuestionPayload(payload) {
 export function GameProvider({ children }) {
   const socketRef = useRef(null);
   const questionRef = useRef(null);
+  const sessionRef = useRef(null);
   const notificationTimerRef = useRef(null);
+  const joinIntentRef = useRef(null);
+  const awaitingJoinRef = useRef(false);
   const [session, setSession] = useState(null);
   const [question, setQuestion] = useState(null);
   const [results, setResults] = useState(null);
@@ -46,6 +49,10 @@ export function GameProvider({ children }) {
   useEffect(() => {
     questionRef.current = question;
   }, [question]);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   const showNotice = useCallback((message) => {
     if (!message) {
@@ -62,6 +69,28 @@ export function GameProvider({ children }) {
     }, 2800);
   }, []);
 
+  const emitJoinGame = useCallback((socket, { sessionId, username, isCreator = false, forceFresh = false }) => {
+    if (!sessionId || !username) {
+      return;
+    }
+
+    const saved = forceFresh ? null : loadPlayerSession(sessionId);
+    awaitingJoinRef.current = true;
+    joinIntentRef.current = {
+      sessionId,
+      username,
+      isCreator,
+      forceFresh,
+    };
+
+    socket.emit('join-game', {
+      sessionId,
+      username,
+      isCreator,
+      playerToken: saved?.playerToken,
+    });
+  }, []);
+
   useEffect(() => {
     const socket = io(getBackendUrl(), {
       autoConnect: false,
@@ -72,6 +101,15 @@ export function GameProvider({ children }) {
 
     socket.on('connect', () => {
       setConnectionStatus('connected');
+
+      const activeSession = sessionRef.current;
+      if (activeSession && !awaitingJoinRef.current) {
+        emitJoinGame(socket, {
+          sessionId: activeSession.sessionId,
+          username: activeSession.you?.username,
+          isCreator: Boolean(activeSession.you?.isHost),
+        });
+      }
     });
 
     socket.on('disconnect', () => {
@@ -79,6 +117,13 @@ export function GameProvider({ children }) {
     });
 
     socket.on('joined-game', (payload) => {
+      awaitingJoinRef.current = false;
+      joinIntentRef.current = {
+        sessionId: payload.sessionId,
+        username: payload.you?.username || payload.username,
+        isCreator: Boolean(payload.you?.isHost),
+        forceFresh: false,
+      };
       setSession(payload);
       setQuestion(null);
       setResults(null);
@@ -231,7 +276,7 @@ export function GameProvider({ children }) {
       }
       socket.close();
     };
-  }, [showNotice]);
+  }, [emitJoinGame, showNotice]);
 
   const ensureSocket = useCallback(() => {
     const socket = socketRef.current;
@@ -250,16 +295,15 @@ export function GameProvider({ children }) {
   const joinSession = useCallback(
     ({ sessionId, username, isCreator = false, forceFresh = false }) => {
       const socket = ensureSocket();
-      const saved = forceFresh ? null : loadPlayerSession(sessionId);
       setError('');
-      socket.emit('join-game', {
+      emitJoinGame(socket, {
         sessionId,
         username,
         isCreator,
-        playerToken: saved?.playerToken,
+        forceFresh,
       });
     },
-    [ensureSocket]
+    [emitJoinGame, ensureSocket]
   );
 
   const startGame = useCallback(() => {
@@ -291,6 +335,22 @@ export function GameProvider({ children }) {
     ensureSocket().emit('next-question');
   }, [ensureSocket]);
 
+  const resyncSession = useCallback(() => {
+    const socket = ensureSocket();
+    const activeSession = sessionRef.current;
+    const joinIntent = joinIntentRef.current;
+
+    if (awaitingJoinRef.current) {
+      return;
+    }
+
+    emitJoinGame(socket, {
+      sessionId: activeSession?.sessionId || joinIntent?.sessionId,
+      username: activeSession?.you?.username || joinIntent?.username,
+      isCreator: Boolean(activeSession?.you?.isHost || joinIntent?.isCreator),
+    });
+  }, [emitJoinGame, ensureSocket]);
+
   const leaveSession = useCallback(
     (sessionId, { forgetPlayer = false } = {}) => {
       if (forgetPlayer && sessionId) {
@@ -298,6 +358,8 @@ export function GameProvider({ children }) {
       }
 
       socketRef.current?.disconnect();
+      awaitingJoinRef.current = false;
+      joinIntentRef.current = null;
       setSession(null);
       setQuestion(null);
       setResults(null);
@@ -326,6 +388,7 @@ export function GameProvider({ children }) {
       startGame,
       submitAnswer,
       nextQuestion,
+      resyncSession,
       leaveSession,
       clearError,
     }),
@@ -339,6 +402,7 @@ export function GameProvider({ children }) {
       nextQuestion,
       notice,
       question,
+      resyncSession,
       results,
       session,
       startGame,

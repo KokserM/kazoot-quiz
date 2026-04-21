@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
-import App, { getRemainingQuestionMs, getSessionPhase } from './App';
+import App, { getRemainingQuestionMs, getSessionPhase, shouldShowSessionJoinLoading } from './App';
 
 test('renders Kazoot marketing headline', () => {
   render(<App />);
@@ -38,4 +38,24 @@ test('results phase wins even if session summary is stale', () => {
       gameEnd: null,
     })
   ).toBe('results');
+});
+
+test('shows loading state instead of join form during auto-join', () => {
+  expect(
+    shouldShowSessionJoinLoading({
+      activeSession: null,
+      joinAttempted: true,
+      hasKnownUsername: true,
+      error: '',
+    })
+  ).toBe(true);
+
+  expect(
+    shouldShowSessionJoinLoading({
+      activeSession: { sessionId: 'ABC123' },
+      joinAttempted: true,
+      hasKnownUsername: true,
+      error: '',
+    })
+  ).toBe(false);
 });
