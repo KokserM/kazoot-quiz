@@ -85,5 +85,5 @@ test('only attempts timeout resync when disconnected', () => {
 });
 
 test('local development keeps websocket fallback transports', () => {
-  expect(getSocketTransports()).toEqual(['websocket', 'polling']);
+  expect(getSocketTransports()).toEqual(['polling', 'websocket']);
 });

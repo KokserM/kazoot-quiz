@@ -6,7 +6,7 @@ import { clearPlayerSession, loadPlayerSession, savePlayerSession } from '../lib
 const GameContext = createContext(null);
 
 export function getSocketTransports() {
-  return import.meta.env.PROD ? ['websocket'] : ['websocket', 'polling'];
+  return ['polling', 'websocket'];
 }
 
 function normalizeQuestionPayload(payload) {
@@ -99,6 +99,11 @@ export function GameProvider({ children }) {
     const socket = io(getBackendUrl(), {
       autoConnect: false,
       transports: getSocketTransports(),
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
     socketRef.current = socket;
@@ -123,6 +128,11 @@ export function GameProvider({ children }) {
     });
 
     socket.on('disconnect', () => {
+      setConnectionStatus('disconnected');
+    });
+
+    socket.on('connect_error', () => {
+      awaitingJoinRef.current = false;
       setConnectionStatus('disconnected');
     });
 
@@ -267,6 +277,7 @@ export function GameProvider({ children }) {
     });
 
     socket.on('error', ({ message }) => {
+      awaitingJoinRef.current = false;
       setQuestion((previous) => {
         if (!previous) {
           return previous;
