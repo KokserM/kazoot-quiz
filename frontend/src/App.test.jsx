@@ -6,6 +6,7 @@ import App, {
   shouldAttemptQuestionResync,
   shouldShowSessionJoinLoading,
 } from './App';
+import { getSocketTransports } from './providers/GameProvider';
 
 test('renders Kazoot marketing headline', () => {
   render(<App />);
@@ -81,4 +82,8 @@ test('only attempts timeout resync when disconnected', () => {
       hasResyncHandler: true,
     })
   ).toBe(true);
+});
+
+test('local development keeps websocket fallback transports', () => {
+  expect(getSocketTransports()).toEqual(['websocket', 'polling']);
 });

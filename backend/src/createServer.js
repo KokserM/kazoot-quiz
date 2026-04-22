@@ -40,6 +40,10 @@ function createServer() {
       credentials: true,
       methods: ['GET', 'POST'],
     },
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000,
+      skipMiddlewares: true,
+    },
   });
 
   const gameService = new GameService({

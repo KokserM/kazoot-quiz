@@ -5,6 +5,10 @@ import { clearPlayerSession, loadPlayerSession, savePlayerSession } from '../lib
 
 const GameContext = createContext(null);
 
+export function getSocketTransports() {
+  return import.meta.env.PROD ? ['websocket'] : ['websocket', 'polling'];
+}
+
 function normalizeQuestionPayload(payload) {
   if (!payload) {
     return null;
@@ -94,13 +98,19 @@ export function GameProvider({ children }) {
   useEffect(() => {
     const socket = io(getBackendUrl(), {
       autoConnect: false,
-      transports: ['websocket', 'polling'],
+      transports: getSocketTransports(),
     });
 
     socketRef.current = socket;
 
     socket.on('connect', () => {
       setConnectionStatus('connected');
+
+      if (socket.recovered) {
+        awaitingJoinRef.current = false;
+        showNotice('Connection restored.');
+        return;
+      }
 
       const activeSession = sessionRef.current;
       if (activeSession && !awaitingJoinRef.current) {
