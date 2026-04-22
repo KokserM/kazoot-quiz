@@ -254,6 +254,62 @@ test('timer expiry reveals results even when nobody answers', async () => {
   }
 });
 
+test('results payload counts submitted answers across players', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const sessionDetails = await createSession(runtime.baseUrl, 'Space & Astronomy');
+    const session = runtime.store.getSession(sessionDetails.sessionId);
+    session.questionTimeLimitMs = 2000;
+
+    const host = connectClient(runtime.baseUrl);
+    const guest = connectClient(runtime.baseUrl);
+
+    const hostJoined = onceEventWithTimeout(host, 'joined-game');
+    host.emit('join-game', {
+      sessionId: sessionDetails.sessionId,
+      username: 'Host',
+      isCreator: true,
+    });
+    await hostJoined;
+
+    const guestJoined = onceEventWithTimeout(guest, 'joined-game');
+    guest.emit('join-game', {
+      sessionId: sessionDetails.sessionId,
+      username: 'Guest',
+    });
+    await guestJoined;
+
+    const hostQuestion = onceEventWithTimeout(host, 'question-start');
+    host.emit('start-game');
+    const questionPayload = await hostQuestion;
+
+    const hostAck = onceEventWithTimeout(host, 'answer-submitted');
+    host.emit('submit-answer', {
+      answerIndex: 0,
+      roundId: questionPayload.roundId,
+    });
+    await hostAck;
+
+    const guestAck = onceEventWithTimeout(guest, 'answer-submitted');
+    guest.emit('submit-answer', {
+      answerIndex: 1,
+      roundId: questionPayload.roundId,
+    });
+    await guestAck;
+
+    runtime.gameService.finishQuestion(sessionDetails.sessionId, questionPayload.roundId);
+    const results = await onceEventWithTimeout(host, 'question-results');
+
+    assert.deepEqual(results.answerStats, [1, 1, 0, 0]);
+
+    host.disconnect();
+    guest.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
 test('rejoining after timeout receives the results snapshot', async () => {
   const runtime = await startTestServer();
 

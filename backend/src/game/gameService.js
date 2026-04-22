@@ -10,12 +10,12 @@ const {
 function buildAnswerStats(players, questionIndex) {
   const stats = [0, 0, 0, 0];
 
-  players.forEach((player) => {
+  for (const player of players) {
     const answer = player.answers[questionIndex];
     if (answer) {
       stats[answer.answerIndex] += 1;
     }
-  });
+  }
 
   return stats;
 }
@@ -34,6 +34,19 @@ class GameService {
     this.store = store;
     this.questionService = questionService;
     this.config = config;
+  }
+
+  log(eventName, details = {}) {
+    if (this.config.nodeEnv !== 'production') {
+      return;
+    }
+
+    console.log(
+      `[game:${eventName}] ${JSON.stringify({
+        timestamp: new Date().toISOString(),
+        ...details,
+      })}`
+    );
   }
 
   async createSession(payload) {
@@ -165,6 +178,12 @@ class GameService {
     const session = this.store.getSession(payload.sessionId);
 
     if (!session) {
+      this.log('join_session_missing', {
+        sessionId: payload.sessionId,
+        socketId: socket.id,
+        username: payload.username,
+        knownSessions: [...this.store.sessions.keys()],
+      });
       throw new Error('Game session not found');
     }
 
@@ -217,6 +236,14 @@ class GameService {
     socket.emit('joined-game', joinedPayload);
     this.emitSessionUpdate(session);
     this.emitPhaseSnapshot(session, player);
+    this.log('join_session_success', {
+      sessionId: session.id,
+      playerId: player.playerId,
+      username: player.username,
+      reconnected,
+      gameState: session.gameState,
+      connectedPlayerCount: session.getConnectedPlayers().length,
+    });
 
     if (reconnected) {
       socket.to(session.id).emit('player-reconnected', {
@@ -256,6 +283,13 @@ class GameService {
     });
 
     this.emitSessionUpdate(session);
+    this.log('question_started', {
+      sessionId: session.id,
+      roundId: session.currentRoundId,
+      questionIndex,
+      connectedPlayerCount: session.getConnectedPlayers().length,
+      endsAt: session.currentQuestionEndsAt,
+    });
     return question;
   }
 
@@ -320,6 +354,15 @@ class GameService {
     };
     player.score += points;
     session.touch();
+    this.log('answer_submitted', {
+      sessionId: session.id,
+      roundId: session.currentRoundId,
+      playerId: player.playerId,
+      answerIndex: payload.answerIndex,
+      isCorrect,
+      points,
+      timeRemainingMs,
+    });
 
     return {
       accepted: true,
@@ -330,16 +373,35 @@ class GameService {
   finishQuestion(sessionId, expectedRoundId) {
     const session = this.store.getSession(sessionId);
     if (!session) {
+      this.log('finish_question_missing_session', {
+        sessionId,
+        expectedRoundId,
+      });
       return;
     }
 
     if (session.gameState !== 'question' || session.currentRoundId !== expectedRoundId) {
+      this.log('finish_question_skipped', {
+        sessionId,
+        expectedRoundId,
+        actualRoundId: session.currentRoundId,
+        gameState: session.gameState,
+      });
       return;
     }
 
     session.clearTimer();
     session.gameState = 'results';
     session.touch();
+
+    const answerStats = buildAnswerStats(session.players.values(), session.currentQuestionIndex);
+    this.log('question_finished', {
+      sessionId,
+      roundId: expectedRoundId,
+      questionIndex: session.currentQuestionIndex,
+      answerStats,
+      connectedPlayerCount: session.getConnectedPlayers().length,
+    });
 
     session.players.forEach((player) => {
       this.emitToPlayer(player, 'question-results', this.buildResultsPayload(session, player));

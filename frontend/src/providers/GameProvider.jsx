@@ -9,6 +9,14 @@ export function getSocketTransports() {
   return ['polling', 'websocket'];
 }
 
+function logSocketEvent(eventName, details = {}) {
+  if (!import.meta.env.PROD) {
+    return;
+  }
+
+  console.log(`[socket:${eventName}]`, details);
+}
+
 function normalizeQuestionPayload(payload) {
   if (!payload) {
     return null;
@@ -110,6 +118,11 @@ export function GameProvider({ children }) {
 
     socket.on('connect', () => {
       setConnectionStatus('connected');
+      logSocketEvent('connect', {
+        socketId: socket.id,
+        recovered: socket.recovered,
+        transport: socket.io.engine.transport.name,
+      });
 
       if (socket.recovered) {
         awaitingJoinRef.current = false;
@@ -129,11 +142,20 @@ export function GameProvider({ children }) {
 
     socket.on('disconnect', () => {
       setConnectionStatus('disconnected');
+      logSocketEvent('disconnect', {
+        socketId: socket.id,
+        transport: socket.io.engine?.transport?.name,
+      });
     });
 
-    socket.on('connect_error', () => {
+    socket.on('connect_error', (connectError) => {
       awaitingJoinRef.current = false;
       setConnectionStatus('disconnected');
+      logSocketEvent('connect_error', {
+        message: connectError?.message,
+        description: connectError?.description,
+        context: connectError?.context,
+      });
     });
 
     socket.on('joined-game', (payload) => {
@@ -157,6 +179,12 @@ export function GameProvider({ children }) {
       if (payload.reconnected) {
         showNotice('Reconnected to the live session.');
       }
+      logSocketEvent('joined_game', {
+        sessionId: payload.sessionId,
+        playerId: payload.playerId,
+        reconnected: payload.reconnected,
+        gameState: payload.gameState,
+      });
     });
 
     socket.on('session-updated', (payload) => {
@@ -208,17 +236,30 @@ export function GameProvider({ children }) {
       setQuestion(normalizeQuestionPayload(payload));
       setResults(null);
       setGameEnd(null);
+      logSocketEvent('question_start', {
+        roundId: payload.roundId,
+        questionNumber: payload.questionNumber,
+        endsAt: payload.questionEndsAt,
+      });
     });
 
     socket.on('question-results', (payload) => {
       setResults(payload);
       setQuestion(null);
+      logSocketEvent('question_results', {
+        roundId: payload.roundId,
+        correctAnswer: payload.correctAnswer,
+        answerStats: payload.answerStats,
+      });
     });
 
     socket.on('game-end', (payload) => {
       setGameEnd(payload);
       setQuestion(null);
       setResults(null);
+      logSocketEvent('game_end', {
+        leaderboardSize: payload.leaderboard?.length,
+      });
     });
 
     socket.on('answer-submitted', (payload) => {
@@ -289,6 +330,9 @@ export function GameProvider({ children }) {
         };
       });
       setError(message || 'Something went wrong');
+      logSocketEvent('socket_error', {
+        message,
+      });
     });
 
     return () => {
