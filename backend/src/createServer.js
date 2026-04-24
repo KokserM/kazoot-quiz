@@ -7,10 +7,28 @@ const { QuestionService } = require('./quiz/questionService');
 const { createApp } = require('./http/createApp');
 const { registerSocketHandlers } = require('./socket/registerSocketHandlers');
 
+function logRuntimeMessage(level, message, details = {}) {
+  const serializedDetails = Object.keys(details).length ? ` ${JSON.stringify(details)}` : '';
+  console[level](`[runtime] ${message}${serializedDetails}`);
+}
+
 function createServer() {
   const store = new SessionStore({
     sessionRetentionMs: config.sessionRetentionMs,
     endedSessionRetentionMs: config.endedSessionRetentionMs,
+    storeMode: config.storeMode,
+    logger(eventName, details) {
+      if (config.nodeEnv !== 'production') {
+        return;
+      }
+
+      console.log(
+        `[store:${eventName}] ${JSON.stringify({
+          timestamp: new Date().toISOString(),
+          ...details,
+        })}`
+      );
+    },
   });
 
   const questionService = new QuestionService({
@@ -56,6 +74,20 @@ function createServer() {
   placeholderGameService.createSession = gameService.createSession.bind(gameService);
   placeholderGameService.generateQuiz = gameService.generateQuiz.bind(gameService);
   registerSocketHandlers(io, gameService);
+
+  if (config.nodeEnv === 'production') {
+    logRuntimeMessage('log', 'Store mode enabled', {
+      storeMode: config.storeMode,
+      deploymentId: config.railway.deploymentId || null,
+      serviceName: config.railway.serviceName || null,
+      replicaId: config.railway.replicaId || null,
+      replicaRegion: config.railway.replicaRegion || null,
+    });
+    logRuntimeMessage('warn', 'Single-instance memory mode requires exactly one Railway replica', {
+      action: 'keep this service scaled to one replica',
+      consequence: 'active sessions do not survive restarts or multi-replica routing',
+    });
+  }
 
   const reapInterval = setInterval(() => {
     store.reapExpiredSessions();

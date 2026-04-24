@@ -61,6 +61,63 @@ function getConnectionTone(connectionStatus) {
   return connectionStatus === 'connected' ? 'success' : 'warning';
 }
 
+function hexToRgb(hex) {
+  const normalized = hex.replace('#', '');
+  const value = normalized.length === 3
+    ? normalized
+        .split('')
+        .map((part) => `${part}${part}`)
+        .join('')
+    : normalized;
+
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function mixCountdownColor(startHex, endHex, progress) {
+  const start = hexToRgb(startHex);
+  const end = hexToRgb(endHex);
+  const clampedProgress = Math.max(0, Math.min(1, progress));
+
+  const channel = (from, to) => Math.round(from + (to - from) * clampedProgress);
+
+  return `rgb(${channel(start.r, end.r)}, ${channel(start.g, end.g)}, ${channel(start.b, end.b)})`;
+}
+
+function getCountdownBarColor(question, remainingMs) {
+  if (!question) {
+    return theme.colors.secondarySoft;
+  }
+
+  if (remainingMs <= 3000) {
+    return theme.colors.danger;
+  }
+
+  const elapsedRatio = 1 - Math.max(0, Math.min(1, remainingMs / question.timeLimit));
+  const colorStops = [
+    { stop: 0, color: '#4ade80' },
+    { stop: 0.28, color: '#84cc16' },
+    { stop: 0.55, color: '#eab308' },
+    { stop: 0.78, color: '#f97316' },
+    { stop: 1, color: theme.colors.danger },
+  ];
+
+  for (let index = 0; index < colorStops.length - 1; index += 1) {
+    const current = colorStops[index];
+    const next = colorStops[index + 1];
+
+    if (elapsedRatio <= next.stop) {
+      const segmentProgress = (elapsedRatio - current.stop) / (next.stop - current.stop);
+      return mixCountdownColor(current.color, next.color, segmentProgress);
+    }
+  }
+
+  return theme.colors.danger;
+}
+
 export function getQuestionClockOffset(question, now = Date.now()) {
   if (!question) {
     return 0;
@@ -181,10 +238,18 @@ function CreatePage() {
   const [username, setUsername] = useState('');
   const [topic, setTopic] = useState('');
   const [language, setLanguage] = useState('English');
+  const [questionTimeLimitMs, setQuestionTimeLimitMs] = useState('20000');
   const [topics, setTopics] = useState([]);
   const [hasOpenAI, setHasOpenAI] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const timerOptions = [
+    ['5000', '5 seconds'],
+    ['10000', '10 seconds'],
+    ['15000', '15 seconds'],
+    ['20000', '20 seconds'],
+  ];
 
   useEffect(() => {
     fetchDemoTopics()
@@ -203,7 +268,11 @@ function CreatePage() {
     setError('');
 
     try {
-      const session = await requestCreateSession({ topic, language });
+      const session = await requestCreateSession({
+        topic,
+        language,
+        questionTimeLimitMs: Number(questionTimeLimitMs),
+      });
       navigate(`/session/${session.sessionId}`, {
         state: {
           username: username.trim(),
@@ -278,6 +347,39 @@ function CreatePage() {
               required
             />
           </div>
+
+          <Card
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            style={{
+              marginTop: 18,
+              background: theme.gradients.accent,
+            }}
+          >
+            <Label>Question timer</Label>
+            <HelperText>
+              Choose how long players get to answer each question. Shorter timers feel sharper; 20 seconds is the
+              most forgiving default.
+            </HelperText>
+            <ButtonRow style={{ marginTop: 14 }}>
+              {timerOptions.map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  variant={questionTimeLimitMs === value ? 'primary' : 'secondary'}
+                  compact
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setQuestionTimeLimitMs(value)}
+                  aria-pressed={questionTimeLimitMs === value}
+                  style={{
+                    minWidth: 110,
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </ButtonRow>
+          </Card>
 
           {topics.length ? (
             <Grid
@@ -466,6 +568,7 @@ function GameplayTopBar({ session, connectionStatus, questionNumber, totalQuesti
 function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
   const shareLink = `${window.location.origin}/session/${session.sessionId}`;
   const canStart = session.you?.isHost;
+  const roundTimerLabel = `${Math.round(session.questionTimeLimitMs / 1000)}s timer`;
 
   async function copyLink() {
     await navigator.clipboard.writeText(shareLink);
@@ -483,6 +586,7 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
         <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 20 }}>
           <StatChip>Code: {session.sessionId}</StatChip>
           <StatChip>Questions: {session.questionCount}</StatChip>
+          <StatChip>{roundTimerLabel}</StatChip>
         </Grid>
 
         <div style={{ marginTop: 18 }}>
@@ -579,6 +683,7 @@ function QuestionView({ question, onSubmitAnswer, onResyncSession, connectionSta
   const remainingMs = useSyncedCountdown(question);
   const remainingSeconds = Math.ceil(remainingMs / 1000);
   const progress = question ? Math.max(0, Math.min(1, remainingMs / question.timeLimit)) : 0;
+  const countdownBarColor = getCountdownBarColor(question, remainingMs);
   const hasSubmitted = hasAnswerSelection(question?.submittedAnswerIndex);
   const hasPendingSubmission = hasAnswerSelection(question?.pendingAnswerIndex);
   const locked = hasSubmitted || hasPendingSubmission || remainingMs === 0;
@@ -650,7 +755,7 @@ function QuestionView({ question, onSubmitAnswer, onResyncSession, connectionSta
               style={{
                 height: '100%',
                 borderRadius: 999,
-                background: remainingSeconds <= 5 ? theme.colors.danger : theme.colors.primaryBright,
+                background: countdownBarColor,
               }}
               animate={{ width: `${progress * 100}%` }}
             />

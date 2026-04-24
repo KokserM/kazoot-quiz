@@ -50,7 +50,7 @@ class GameService {
   }
 
   async createSession(payload) {
-    const { topic, language } = createSessionSchema.parse(payload);
+    const { topic, language, questionTimeLimitMs } = createSessionSchema.parse(payload);
     const quiz = await this.questionService.generateQuiz(topic, language);
     const validatedQuiz = quizSchema.parse(quiz);
 
@@ -59,7 +59,7 @@ class GameService {
       language: validatedQuiz.language,
       questions: validatedQuiz.questions,
       questionSource: quiz.source || 'demo',
-      questionTimeLimitMs: this.config.questionTimeLimitMs,
+      questionTimeLimitMs,
     });
 
     return {
@@ -67,6 +67,7 @@ class GameService {
       topic: session.topic,
       language: session.language,
       questionCount: session.questions.length,
+      questionTimeLimitMs: session.questionTimeLimitMs,
       questionSource: session.questionSource,
     };
   }
@@ -173,6 +174,43 @@ class GameService {
     }
   }
 
+  handleRecoveredConnection(socket) {
+    const sessionId = socket.data?.sessionId || null;
+    const playerId = socket.data?.playerId || null;
+    if (!sessionId || !playerId) {
+      this.log('recovered_socket_missing_data', {
+        socketId: socket.id,
+      });
+      return;
+    }
+
+    const session = this.store.getSession(sessionId);
+    const player = session?.players.get(playerId) || null;
+    if (!session || !player) {
+      this.log('recovered_socket_missing_session', {
+        socketId: socket.id,
+        sessionId,
+        playerId,
+      });
+      return;
+    }
+
+    this.store.bindSocket({
+      sessionId,
+      playerId,
+      socketId: socket.id,
+    });
+    session.reconnectPlayer(player, socket.id, player.username);
+    this.emitSessionUpdate(session);
+    this.emitPhaseSnapshot(session, player);
+    this.log('recovered_socket_rebound', {
+      socketId: socket.id,
+      sessionId,
+      playerId,
+      gameState: session.gameState,
+    });
+  }
+
   joinSession(socket, rawPayload) {
     const payload = joinGameSchema.parse(rawPayload);
     const session = this.store.getSession(payload.sessionId);
@@ -182,7 +220,7 @@ class GameService {
         sessionId: payload.sessionId,
         socketId: socket.id,
         username: payload.username,
-        knownSessions: [...this.store.sessions.keys()],
+        knownSessions: this.store.getKnownSessionIds(),
       });
       throw new Error('Game session not found');
     }
@@ -224,6 +262,9 @@ class GameService {
       playerId: player.playerId,
       socketId: socket.id,
     });
+    socket.data.sessionId = session.id;
+    socket.data.playerId = player.playerId;
+    socket.data.playerToken = player.playerToken;
 
     const joinedPayload = {
       ...session.toSessionSummary(player.playerId),

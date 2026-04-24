@@ -69,6 +69,19 @@ const config = {
     DEFAULT_ENDED_SESSION_RETENTION_MS
   ),
   openAiModel: process.env.OPENAI_MODEL || 'gpt-5.4',
+  storeMode: 'single-instance-memory',
+  railway: {
+    projectId: process.env.RAILWAY_PROJECT_ID || '',
+    projectName: process.env.RAILWAY_PROJECT_NAME || '',
+    environmentId: process.env.RAILWAY_ENVIRONMENT_ID || '',
+    environmentName: process.env.RAILWAY_ENVIRONMENT_NAME || '',
+    serviceId: process.env.RAILWAY_SERVICE_ID || '',
+    serviceName: process.env.RAILWAY_SERVICE_NAME || '',
+    deploymentId: process.env.RAILWAY_DEPLOYMENT_ID || '',
+    replicaId: process.env.RAILWAY_REPLICA_ID || '',
+    replicaRegion: process.env.RAILWAY_REPLICA_REGION || '',
+    publicDomain: process.env.RAILWAY_PUBLIC_DOMAIN || '',
+  },
 };
 
 function isOriginAllowed(origin) {

@@ -1,5 +1,9 @@
 function registerSocketHandlers(io, gameService) {
   io.on('connection', (socket) => {
+    if (socket.recovered) {
+      gameService.handleRecoveredConnection(socket);
+    }
+
     socket.on(
       'join-game',
       gameService.wrapSocketHandler(socket, async (payload) => {

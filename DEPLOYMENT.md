@@ -12,6 +12,8 @@ Kazoot is designed to run as a single Railway service that serves the built fron
 
 This is the intended production boundary for the current version.
 
+Important: keep the Railway service scaled to exactly one replica. The app now logs its `single-instance-memory` runtime mode at startup, but it still relies on a single Node process for room state.
+
 ## Required environment variables
 
 Set these in Railway:
@@ -48,6 +50,7 @@ The backend serves `frontend/dist` in production.
 - Question timing is server-authoritative and synced to the client with `questionEndsAt` and `serverTime`.
 - Host changes are broadcast automatically if the current host disconnects.
 - Sessions are cleaned up after inactivity.
+- `GET /health` includes store mode, active sessions, sessions by state, socket index size, and uptime.
 
 ## Verification checklist
 
@@ -64,6 +67,10 @@ After deploy, verify:
 ### Session resets after restart
 
 That is expected with the current single-instance in-memory architecture. Add Redis or a database later if you need restart-safe sessions.
+
+### Sessions break after scaling replicas
+
+That is expected if the service runs with more than one replica. Kazoot does not share room state across replicas yet, so keep Railway scaled to one replica until shared state is introduced.
 
 ### WebSockets do not connect
 

@@ -47,6 +47,7 @@ export function GameProvider({ children }) {
   const socketRef = useRef(null);
   const questionRef = useRef(null);
   const sessionRef = useRef(null);
+  const connectionStatusRef = useRef('disconnected');
   const notificationTimerRef = useRef(null);
   const joinIntentRef = useRef(null);
   const awaitingJoinRef = useRef(false);
@@ -65,6 +66,10 @@ export function GameProvider({ children }) {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    connectionStatusRef.current = connectionStatus;
+  }, [connectionStatus]);
 
   const showNotice = useCallback((message) => {
     if (!message) {
@@ -329,6 +334,22 @@ export function GameProvider({ children }) {
           pendingAnswerIndex: null,
         };
       });
+
+      const shouldTreatAsRecoverableMissingSession =
+        message === 'Game session not found' &&
+        Boolean(sessionRef.current?.sessionId) &&
+        joinIntentRef.current?.sessionId === sessionRef.current?.sessionId &&
+        connectionStatusRef.current !== 'connected';
+
+      if (shouldTreatAsRecoverableMissingSession) {
+        showNotice('Connection interrupted. Trying to restore the live room...');
+        logSocketEvent('socket_error_recoverable', {
+          message,
+          sessionId: sessionRef.current?.sessionId,
+        });
+        return;
+      }
+
       setError(message || 'Something went wrong');
       logSocketEvent('socket_error', {
         message,

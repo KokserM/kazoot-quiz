@@ -12,9 +12,17 @@ const quizSchema = z.object({
   questions: z.array(questionSchema).length(10),
 });
 
+const questionTimeLimitSchema = z.union([
+  z.literal(5000),
+  z.literal(10000),
+  z.literal(15000),
+  z.literal(20000),
+]);
+
 const createSessionSchema = z.object({
   topic: z.string().trim().min(2).max(80),
   language: z.string().trim().min(2).max(40).default('English'),
+  questionTimeLimitMs: questionTimeLimitSchema.default(20000),
 });
 
 const generateQuizSchema = createSessionSchema;

@@ -39,11 +39,20 @@ function onceEventWithTimeout(socket, eventName, timeoutMs = 5000) {
   ]);
 }
 
-async function createSession(baseUrl, topic = '90s Movies') {
+async function expectNoEvent(socket, eventName, timeoutMs = 300) {
+  await Promise.race([
+    onceEvent(socket, eventName).then(() => {
+      throw new Error(`Unexpected ${eventName}`);
+    }),
+    delay(timeoutMs),
+  ]);
+}
+
+async function createSession(baseUrl, topic = '90s Movies', overrides = {}) {
   const response = await fetch(`${baseUrl}/api/create-session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, language: 'English' }),
+    body: JSON.stringify({ topic, language: 'English', ...overrides }),
   });
 
   assert.equal(response.status, 200);
@@ -114,6 +123,39 @@ test('duplicate answer submissions do not inflate the score', async () => {
 
     host.disconnect();
     guest.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('session uses the host-selected timer length', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, '90s Movies', {
+      questionTimeLimitMs: 5000,
+    });
+    const storedSession = runtime.store.getSession(session.sessionId);
+
+    assert.equal(session.questionTimeLimitMs, 5000);
+    assert.equal(storedSession.questionTimeLimitMs, 5000);
+
+    const host = connectClient(runtime.baseUrl);
+    const joinedPromise = onceEventWithTimeout(host, 'joined-game');
+    host.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Host',
+      isCreator: true,
+    });
+    await joinedPromise;
+
+    const questionPromise = onceEventWithTimeout(host, 'question-start');
+    host.emit('start-game');
+    const questionPayload = await questionPromise;
+
+    assert.equal(questionPayload.timeLimit, 5000);
+
+    host.disconnect();
   } finally {
     await runtime.close();
   }
@@ -208,6 +250,97 @@ test('host can start a game alone', async () => {
     assert.equal(questionPayload.totalQuestions, 10);
 
     host.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('concurrent sessions stay isolated when different hosts start games', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const sessionOne = await createSession(runtime.baseUrl, 'Space & Astronomy');
+    const sessionTwo = await createSession(runtime.baseUrl, 'Video Games');
+
+    const hostOne = connectClient(runtime.baseUrl);
+    const guestOne = connectClient(runtime.baseUrl);
+    const hostTwo = connectClient(runtime.baseUrl);
+    const guestTwo = connectClient(runtime.baseUrl);
+
+    await Promise.all([
+      (() => {
+        const joined = onceEventWithTimeout(hostOne, 'joined-game');
+        hostOne.emit('join-game', { sessionId: sessionOne.sessionId, username: 'HostOne', isCreator: true });
+        return joined;
+      })(),
+      (() => {
+        const joined = onceEventWithTimeout(guestOne, 'joined-game');
+        guestOne.emit('join-game', { sessionId: sessionOne.sessionId, username: 'GuestOne' });
+        return joined;
+      })(),
+      (() => {
+        const joined = onceEventWithTimeout(hostTwo, 'joined-game');
+        hostTwo.emit('join-game', { sessionId: sessionTwo.sessionId, username: 'HostTwo', isCreator: true });
+        return joined;
+      })(),
+      (() => {
+        const joined = onceEventWithTimeout(guestTwo, 'joined-game');
+        guestTwo.emit('join-game', { sessionId: sessionTwo.sessionId, username: 'GuestTwo' });
+        return joined;
+      })(),
+    ]);
+
+    const sessionOneQuestion = onceEventWithTimeout(guestOne, 'question-start');
+    hostOne.emit('start-game');
+    await sessionOneQuestion;
+    await expectNoEvent(guestTwo, 'question-start');
+
+    const sessionTwoQuestion = onceEventWithTimeout(guestTwo, 'question-start');
+    hostTwo.emit('start-game');
+    await sessionTwoQuestion;
+
+    hostOne.disconnect();
+    guestOne.disconnect();
+    hostTwo.disconnect();
+    guestTwo.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('multiple hosts can start separate sessions at the same time', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const sessions = await Promise.all([
+      createSession(runtime.baseUrl, 'Space & Astronomy'),
+      createSession(runtime.baseUrl, 'Video Games'),
+      createSession(runtime.baseUrl, '90s Movies'),
+    ]);
+
+    const hosts = sessions.map(() => connectClient(runtime.baseUrl));
+
+    await Promise.all(
+      hosts.map((host, index) => {
+        const joined = onceEventWithTimeout(host, 'joined-game');
+        host.emit('join-game', {
+          sessionId: sessions[index].sessionId,
+          username: `Host${index + 1}`,
+          isCreator: true,
+        });
+        return joined;
+      })
+    );
+
+    const questions = hosts.map((host) => onceEventWithTimeout(host, 'question-start'));
+    hosts.forEach((host) => host.emit('start-game'));
+    const payloads = await Promise.all(questions);
+
+    payloads.forEach((payload) => {
+      assert.equal(payload.questionNumber, 1);
+    });
+
+    hosts.forEach((host) => host.disconnect());
   } finally {
     await runtime.close();
   }
@@ -361,6 +494,98 @@ test('rejoining after timeout receives the results snapshot', async () => {
 
     host.disconnect();
     rejoinedGuest.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('rejoining an in-progress game receives only that session snapshot', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const sessionOne = await createSession(runtime.baseUrl, 'Space & Astronomy');
+    const sessionTwo = await createSession(runtime.baseUrl, 'Video Games');
+
+    const hostOne = connectClient(runtime.baseUrl);
+    const guestOne = connectClient(runtime.baseUrl);
+    const hostTwo = connectClient(runtime.baseUrl);
+
+    await Promise.all([
+      (() => {
+        const joined = onceEventWithTimeout(hostOne, 'joined-game');
+        hostOne.emit('join-game', { sessionId: sessionOne.sessionId, username: 'HostOne', isCreator: true });
+        return joined;
+      })(),
+      (() => {
+        const joined = onceEventWithTimeout(guestOne, 'joined-game');
+        guestOne.emit('join-game', { sessionId: sessionOne.sessionId, username: 'GuestOne' });
+        return joined;
+      })(),
+      (() => {
+        const joined = onceEventWithTimeout(hostTwo, 'joined-game');
+        hostTwo.emit('join-game', { sessionId: sessionTwo.sessionId, username: 'HostTwo', isCreator: true });
+        return joined;
+      })(),
+    ]);
+
+    const sessionOneQuestion = onceEventWithTimeout(guestOne, 'question-start');
+    hostOne.emit('start-game');
+    const questionOnePayload = await sessionOneQuestion;
+
+    const originalGuestRecord = runtime.store.getSession(sessionOne.sessionId).getPlayerBySocketId(guestOne.id);
+    const guestToken = originalGuestRecord.playerToken;
+    guestOne.disconnect();
+    await delay(50);
+
+    const sessionTwoQuestion = onceEventWithTimeout(hostTwo, 'question-start');
+    hostTwo.emit('start-game');
+    await sessionTwoQuestion;
+
+    const rejoinedGuest = connectClient(runtime.baseUrl);
+    const joinedAgain = onceEventWithTimeout(rejoinedGuest, 'joined-game');
+    const questionAgain = onceEventWithTimeout(rejoinedGuest, 'question-start');
+    rejoinedGuest.emit('join-game', {
+      sessionId: sessionOne.sessionId,
+      username: 'GuestOne',
+      playerToken: guestToken,
+    });
+
+    const rejoinedPayload = await joinedAgain;
+    const rejoinedQuestion = await questionAgain;
+
+    assert.equal(rejoinedPayload.sessionId, sessionOne.sessionId);
+    assert.equal(rejoinedQuestion.roundId, questionOnePayload.roundId);
+
+    hostOne.disconnect();
+    hostTwo.disconnect();
+    rejoinedGuest.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('deleting a session cleans stale socket index entries', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, '90s Movies');
+    const host = connectClient(runtime.baseUrl);
+
+    const joined = onceEventWithTimeout(host, 'joined-game');
+    host.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Host',
+      isCreator: true,
+    });
+    await joined;
+
+    assert.equal(runtime.store.getSocketIndexSize(), 1);
+    runtime.store.deleteSession(session.sessionId, { reason: 'test_cleanup' });
+
+    assert.equal(runtime.store.getSocketIndexSize(), 0);
+    assert.deepEqual(runtime.store.auditIntegrity(), []);
+
+    host.disconnect();
   } finally {
     await runtime.close();
   }

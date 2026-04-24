@@ -83,7 +83,10 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 - Sessions live in memory for the lifetime of the server process.
 - Reconnects work while the Railway instance stays alive.
 - Sessions do not survive instance restarts because there is no shared database or Redis layer yet.
+- Production is intentionally `single-instance-memory` mode. Keep the Railway service at exactly one replica.
 - CORS is restricted to configured origins plus Railway domains in production.
+- `/health` now reports store mode, session state counts, socket index size, and uptime.
+- `/diagnostics/sessions` is available outside production for session integrity and snapshot debugging.
 
 ## API and socket contract
 

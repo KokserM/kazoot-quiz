@@ -37,21 +37,32 @@ function createApp({ gameService, store, questionService, config }) {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/health', (req, res) => {
+    const healthSnapshot = store.getHealthSnapshot();
     res.status(200).json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      activeSessions: store.sessions.size,
-      totalPlayers: [...store.sessions.values()].reduce(
-        (total, session) => total + session.players.size,
-        0
-      ),
-      connectedPlayers: [...store.sessions.values()].reduce(
-        (total, session) => total + session.getConnectedPlayers().length,
-        0
-      ),
+      uptimeSeconds: Math.round(process.uptime()),
+      ...healthSnapshot,
       openAiEnabled: questionService.hasOpenAI(),
+      railway: {
+        serviceName: config.railway.serviceName || null,
+        replicaId: config.railway.replicaId || null,
+        replicaRegion: config.railway.replicaRegion || null,
+        deploymentId: config.railway.deploymentId || null,
+      },
     });
   });
+
+  if (config.nodeEnv !== 'production') {
+    app.get('/diagnostics/sessions', (req, res) => {
+      res.status(200).json({
+        storeMode: store.getStoreMode(),
+        socketIndexSize: store.getSocketIndexSize(),
+        integrityIssues: store.auditIntegrity(),
+        sessions: store.getSessionDiagnostics(),
+      });
+    });
+  }
 
   app.get('/api/demo-topics', (req, res) => {
     const demoQuestions = require('../../demoQuestions');

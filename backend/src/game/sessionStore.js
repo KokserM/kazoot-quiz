@@ -149,6 +149,7 @@ class GameSession {
       topic: this.topic,
       language: this.language,
       questionCount: this.questions.length,
+      questionTimeLimitMs: this.questionTimeLimitMs,
       questionSource: this.questionSource,
       playerCount: this.players.size,
       connectedPlayerCount: this.getConnectedPlayers().length,
@@ -178,11 +179,144 @@ class GameSession {
 }
 
 class SessionStore {
-  constructor({ sessionRetentionMs, endedSessionRetentionMs }) {
+  constructor({ sessionRetentionMs, endedSessionRetentionMs, storeMode = 'single-instance-memory', logger = null }) {
     this.sessions = new Map();
     this.socketIndex = new Map();
     this.sessionRetentionMs = sessionRetentionMs;
     this.endedSessionRetentionMs = endedSessionRetentionMs;
+    this.storeMode = storeMode;
+    this.logger = logger;
+  }
+
+  log(eventName, details = {}) {
+    if (typeof this.logger !== 'function') {
+      return;
+    }
+
+    this.logger(eventName, details);
+  }
+
+  getStoreMode() {
+    return this.storeMode;
+  }
+
+  getSocketIndexSize() {
+    return this.socketIndex.size;
+  }
+
+  getKnownSessionIds() {
+    return [...this.sessions.keys()];
+  }
+
+  getStateCounts() {
+    return [...this.sessions.values()].reduce((counts, session) => {
+      counts[session.gameState] = (counts[session.gameState] || 0) + 1;
+      return counts;
+    }, {});
+  }
+
+  getHealthSnapshot() {
+    return {
+      storeMode: this.storeMode,
+      activeSessions: this.sessions.size,
+      socketIndexSize: this.socketIndex.size,
+      sessionsByState: this.getStateCounts(),
+      totalPlayers: [...this.sessions.values()].reduce((total, session) => total + session.players.size, 0),
+      connectedPlayers: [...this.sessions.values()].reduce(
+        (total, session) => total + session.getConnectedPlayers().length,
+        0
+      ),
+    };
+  }
+
+  getSessionDiagnostics() {
+    return [...this.sessions.values()].map((session) => ({
+      sessionId: session.id,
+      topic: session.topic,
+      gameState: session.gameState,
+      questionCount: session.questions.length,
+      currentQuestionIndex: session.currentQuestionIndex,
+      currentRoundId: session.currentRoundId,
+      questionTimeLimitMs: session.questionTimeLimitMs,
+      playerCount: session.players.size,
+      connectedPlayerCount: session.getConnectedPlayers().length,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      endedAt: session.endedAt,
+    }));
+  }
+
+  auditIntegrity() {
+    const issues = [];
+
+    for (const [socketId, indexed] of this.socketIndex.entries()) {
+      const session = this.sessions.get(indexed.sessionId);
+      if (!session) {
+        issues.push({
+          type: 'missing_session',
+          socketId,
+          sessionId: indexed.sessionId,
+          playerId: indexed.playerId,
+        });
+        continue;
+      }
+
+      const player = session.players.get(indexed.playerId);
+      if (!player) {
+        issues.push({
+          type: 'missing_player',
+          socketId,
+          sessionId: indexed.sessionId,
+          playerId: indexed.playerId,
+        });
+        continue;
+      }
+
+      if (player.socketId !== socketId) {
+        issues.push({
+          type: 'stale_socket_binding',
+          socketId,
+          sessionId: indexed.sessionId,
+          playerId: indexed.playerId,
+          playerSocketId: player.socketId,
+        });
+      }
+    }
+
+    return issues;
+  }
+
+  pruneSocketIndex({ sessionId = null, dropSessionEntries = false, reason = 'manual' } = {}) {
+    const removed = [];
+
+    for (const [socketId, indexed] of this.socketIndex.entries()) {
+      const session = this.sessions.get(indexed.sessionId);
+      const player = session?.players.get(indexed.playerId) || null;
+      const shouldRemove =
+        (dropSessionEntries && sessionId && indexed.sessionId === sessionId) ||
+        !session ||
+        !player ||
+        player.socketId !== socketId;
+
+      if (shouldRemove) {
+        this.socketIndex.delete(socketId);
+        removed.push({
+          socketId,
+          sessionId: indexed.sessionId,
+          playerId: indexed.playerId,
+        });
+      }
+    }
+
+    if (removed.length > 0) {
+      this.log('socket_index_pruned', {
+        reason,
+        removed,
+        socketIndexSize: this.socketIndex.size,
+      });
+    }
+
+    return removed;
   }
 
   createSession({ topic, language, questions, questionSource, questionTimeLimitMs }) {
@@ -202,6 +336,13 @@ class SessionStore {
     });
 
     this.sessions.set(sessionId, session);
+    this.log('session_created', {
+      sessionId: session.id,
+      topic: session.topic,
+      questionCount: session.questions.length,
+      questionTimeLimitMs: session.questionTimeLimitMs,
+      activeSessions: this.sessions.size,
+    });
     return session;
   }
 
@@ -210,6 +351,7 @@ class SessionStore {
   }
 
   bindSocket({ sessionId, playerId, socketId }) {
+    this.pruneSocketIndex({ sessionId, reason: 'bind_socket' });
     this.socketIndex.set(socketId, { sessionId, playerId });
     const session = this.getSession(sessionId);
     if (!session) {
@@ -246,39 +388,41 @@ class SessionStore {
 
     const session = this.getSession(indexed.sessionId);
     const player = session?.players.get(indexed.playerId) || null;
+    this.pruneSocketIndex({ reason: 'unbind_socket' });
     return { session, player };
   }
 
-  deleteSession(sessionId) {
+  deleteSession(sessionId, { reason = 'manual' } = {}) {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return;
     }
 
     session.clearTimer();
-    [...session.players.values()].forEach((player) => {
-      if (player.socketId) {
-        this.socketIndex.delete(player.socketId);
-      }
-    });
-
+    this.pruneSocketIndex({ sessionId, dropSessionEntries: true, reason: `delete_session:${reason}` });
     this.sessions.delete(sessionId);
+    this.log('session_deleted', {
+      sessionId,
+      reason,
+      activeSessions: this.sessions.size,
+    });
   }
 
   reapExpiredSessions() {
     const now = Date.now();
+    this.pruneSocketIndex({ reason: 'reap_expired_sessions' });
 
     for (const [sessionId, session] of this.sessions.entries()) {
       const idleFor = now - session.updatedAt;
       const hasConnectedPlayers = session.getConnectedPlayers().length > 0;
 
       if (session.gameState === 'ended' && idleFor > this.endedSessionRetentionMs) {
-        this.deleteSession(sessionId);
+        this.deleteSession(sessionId, { reason: 'ended_retention_expired' });
         continue;
       }
 
       if (!hasConnectedPlayers && idleFor > this.sessionRetentionMs) {
-        this.deleteSession(sessionId);
+        this.deleteSession(sessionId, { reason: 'inactive_retention_expired' });
       }
     }
   }
