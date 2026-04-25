@@ -35,11 +35,11 @@ import {
 
 const AccountPage = lazy(() => import('./pages/AccountPage'));
 
-function Shell({ children, dense = false }) {
+function Shell({ children, dense = false, accountBarMode = 'default' }) {
   return (
     <PageShell $dense={dense}>
       <CenteredContent>
-        <AccountStatusBar dense={dense} />
+        <AccountStatusBar dense={dense} mode={accountBarMode} />
         {children}
       </CenteredContent>
     </PageShell>
@@ -253,6 +253,7 @@ function MarketingHome() {
 function CreatePage() {
   const navigate = useNavigate();
   const { accessToken, authError, isConfigured, refreshUsage, signIn, usage, user } = useAuth();
+  const [hostMode, setHostMode] = useState(null);
   const [username, setUsername] = useState('');
   const [topic, setTopic] = useState('');
   const [language, setLanguage] = useState('English');
@@ -284,6 +285,7 @@ function CreatePage() {
       : user && hasOpenAI
         ? 'Create AI game'
         : 'Create demo game';
+  const shouldShowHostGate = !user && !hostMode;
 
   useEffect(() => {
     fetchDemoTopics()
@@ -322,6 +324,67 @@ function CreatePage() {
     }
   }
 
+  if (shouldShowHostGate) {
+    return (
+      <Shell>
+        <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ padding: 32 }}>
+          <HeaderRow>
+            <div>
+              <Eyebrow>Choose how you want to host</Eyebrow>
+              <div style={{ marginTop: 16 }}>
+                <SectionTitle>Host with AI questions or start a demo room.</SectionTitle>
+                <Subtitle>
+                  Sign in with Google to generate unique GPT-5.4 games and get 3 free AI games per day.
+                  You can also continue without login and host with built-in demo questions.
+                </Subtitle>
+              </div>
+            </div>
+            <Button as={Link} to="/" variant="ghost" compact>
+              Back home
+            </Button>
+          </HeaderRow>
+
+          {authError ? <Banner $tone="danger">{authError}</Banner> : null}
+
+          <Grid gap="18px" columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
+            <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ background: theme.gradients.success }}>
+              <Eyebrow>Recommended for hosts</Eyebrow>
+              <SectionTitle style={{ fontSize: '1.35rem', marginTop: 14 }}>Generate unique AI games</SectionTitle>
+              <Subtitle style={{ marginTop: 10 }}>
+                Use Google login to unlock GPT-5.4 question generation, track your credits, and get 3 free
+                AI games every day before paid credits are used.
+              </Subtitle>
+              <ButtonRow style={{ marginTop: 18 }}>
+                <Button type="button" disabled={!isConfigured} onClick={signIn} whileTap={{ scale: 0.98 }}>
+                  Continue with Google
+                </Button>
+              </ButtonRow>
+            </Card>
+
+            <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <Eyebrow>No login needed</Eyebrow>
+              <SectionTitle style={{ fontSize: '1.35rem', marginTop: 14 }}>Host a demo game</SectionTitle>
+              <Subtitle style={{ marginTop: 10 }}>
+                Start quickly with built-in demo questions. This is great for testing the room flow, but it
+                will not generate fresh AI question sets.
+              </Subtitle>
+              <ButtonRow style={{ marginTop: 18 }}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setHostMode('demo')}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Continue with demo game
+                </Button>
+              </ButtonRow>
+            </Card>
+          </Grid>
+        </GlassPanel>
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
       <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ padding: 32 }}>
@@ -345,16 +408,16 @@ function CreatePage() {
         {authError ? <Banner $tone="danger">{authError}</Banner> : null}
 
         <form onSubmit={handleSubmit}>
-          <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18, background: theme.gradients.success }}>
+          <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18, background: user ? theme.gradients.success : theme.gradients.accent }}>
             <HeaderRow style={{ marginBottom: 0 }}>
               <div>
-                <Label>{user ? 'AI hosting balance' : 'Sign in to generate unique AI games'}</Label>
+                <Label>{user ? 'AI hosting balance' : 'Demo hosting mode'}</Label>
                 <HelperText>
                   {user
                     ? isSignedInAiBlocked
                       ? 'You are out of free AI games and paid credits. Add credits or subscribe before creating another AI-generated game.'
                       : `${freeRemainingToday} free AI games left today. ${paidCredits} paid credits available. Free games are used before paid credits.`
-                    : 'Google unlocks 3 free GPT-5.4 games per day for hosts. You can still create a demo room without signing in.'}
+                    : 'You are creating a demo room with built-in questions. Sign in if you want unique GPT-5.4 questions and 3 free AI games per day.'}
                 </HelperText>
               </div>
               {user ? (
@@ -367,13 +430,13 @@ function CreatePage() {
                 <ButtonRow>
                   <Button
                     type="button"
-                    variant="primary"
+                    variant="secondary"
                     compact
                     disabled={!isConfigured}
                     onClick={signIn}
                     whileTap={{ scale: 0.98 }}
                   >
-                    Continue with Google
+                    Sign in for AI questions
                   </Button>
                 </ButtonRow>
               )}
@@ -1107,13 +1170,14 @@ function JoinSessionCard({ sessionId, defaultUsername, onJoin }) {
 
   return (
     <EmptyState initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+      <Eyebrow>Player invite</Eyebrow>
       <SectionTitle>Join room {sessionId}</SectionTitle>
       <Subtitle style={{ marginTop: 8 }}>
-        If you played in this browser before, Kazoot will try to reconnect you automatically. You can
-        also join as a new player below.
+        Your host has already created this game. Enter the name you want shown on the scoreboard,
+        then join the lobby.
       </Subtitle>
       <form
-        style={{ width: '100%', maxWidth: 420, margin: '24px auto 0' }}
+        style={{ width: '100%', maxWidth: 420, margin: '24px auto 0', textAlign: 'left' }}
         onSubmit={(event) => {
           event.preventDefault();
           onJoin(username, true);
@@ -1240,7 +1304,10 @@ function SessionPage() {
   const showGameEndShell = phase === 'ended';
 
   return (
-    <Shell dense={Boolean(activeSession && !showLobbyShell)}>
+    <Shell
+      dense={Boolean(activeSession && !showLobbyShell)}
+      accountBarMode={!activeSession ? 'join' : 'default'}
+    >
       <Grid gap="16px" columns="1fr" $mobileColumns="1fr">
         {notice ? <Banner>{notice}</Banner> : null}
         {error ? <Banner $tone="danger">{error}</Banner> : null}

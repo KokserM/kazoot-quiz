@@ -112,16 +112,24 @@ export function getUsageSummaryLabel(usage) {
   return `${usage.freeRemainingToday ?? 0} free today · ${usage.credits ?? 0} credits`;
 }
 
-export function AccountStatusBar({ dense = false }) {
+export function AccountStatusBar({ dense = false, mode = 'default' }) {
   const { isConfigured, signIn, signOut, usage, user } = useAuth();
   const avatarUrl = user?.user_metadata?.avatar_url;
+  const isJoinMode = mode === 'join';
 
   return (
     <Bar $dense={dense}>
       <BrandLink to="/">Kazoot</BrandLink>
 
       <AccountCluster>
-        {user ? (
+        {isJoinMode ? (
+          <>
+            <BenefitText>Player invite</BenefitText>
+            <Button as={Link} to="/" variant="ghost" compact>
+              Back home
+            </Button>
+          </>
+        ) : user ? (
           <>
             <Pill $tone={(usage?.freeRemainingToday ?? 0) > 0 || (usage?.credits ?? 0) > 0 ? 'success' : 'warning'}>
               {getUsageSummaryLabel(usage)}
