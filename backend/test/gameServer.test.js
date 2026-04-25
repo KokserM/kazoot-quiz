@@ -1055,6 +1055,24 @@ test('health endpoint reports store, limits, and process diagnostics', async () 
   }
 });
 
+test('disallowed browser origins receive 403 instead of an internal server error', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const response = await fetch(`${runtime.baseUrl}/health`, {
+      headers: {
+        Origin: 'https://evil.example',
+      },
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 403);
+    assert.equal(payload.error, 'Origin not allowed');
+  } finally {
+    await runtime.close();
+  }
+});
+
 test('room player cap rejects new players with a clear error', async () => {
   const runtime = await startTestServer();
   const previousMaxPlayersPerSession = runtime.gameService.config.maxPlayersPerSession;

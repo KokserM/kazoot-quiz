@@ -28,11 +28,21 @@ function createCorsOptions() {
         return;
       }
 
-      callback(new Error('Not allowed by CORS'));
+      callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST'],
   };
+}
+
+function rejectDisallowedBrowserOrigins(req, res, next) {
+  const origin = req.get('origin');
+  if (origin && !isOriginAllowed(origin)) {
+    res.status(403).json({ error: 'Origin not allowed' });
+    return;
+  }
+
+  next();
 }
 
 async function getOptionalUser(req, authService) {
@@ -64,6 +74,7 @@ function createApp({ gameService, store, questionService, authService, aiUsageSe
   });
 
   app.set('trust proxy', config.trustProxy);
+  app.use(rejectDisallowedBrowserOrigins);
   app.use(
     helmet({
       contentSecurityPolicy: {

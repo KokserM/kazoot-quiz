@@ -220,7 +220,7 @@ const config = {
 
 function isOriginAllowed(origin) {
   if (!origin) {
-    return config.nodeEnv !== 'production';
+    return true;
   }
 
   const normalizedOrigin = normalizeOrigin(origin);
