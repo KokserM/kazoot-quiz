@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, expect, test } from 'vitest';
 import App, {
+  getCreateButtonLabel,
+  getCreateLoadingMessage,
   getRevealTimingLabel,
   getRemainingQuestionMs,
   getSessionPhase,
@@ -100,6 +102,28 @@ test('formats reveal timing labels and submitted answer copy', () => {
   expect(getRevealTimingLabel('timer')).toBe('Reveal: timer ends');
   expect(getSubmittedAnswerMessage('all_answered')).toMatch(/other players/i);
   expect(getSubmittedAnswerMessage('timer')).toMatch(/timer/i);
+});
+
+test('formats create loading copy for AI and demo sessions', () => {
+  expect(
+    getCreateButtonLabel({
+      isLoading: true,
+      isSignedInAiBlocked: false,
+      user: { id: 'user-1' },
+      hasOpenAI: true,
+    })
+  ).toBe('Generating questions...');
+  expect(getCreateLoadingMessage({ user: { id: 'user-1' }, hasOpenAI: true })).toMatch(/GPT-5\.4/i);
+
+  expect(
+    getCreateButtonLabel({
+      isLoading: true,
+      isSignedInAiBlocked: false,
+      user: null,
+      hasOpenAI: true,
+    })
+  ).toBe('Creating demo room...');
+  expect(getCreateLoadingMessage({ user: null, hasOpenAI: true })).toMatch(/demo room/i);
 });
 
 test('stored player sessions are scoped by username and can be cleared', () => {

@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import { ThemeProvider } from 'styled-components';
 import { motion } from 'framer-motion';
 import { fetchDemoTopics, createSession as requestCreateSession } from './lib/api';
@@ -37,6 +38,7 @@ import {
   ResultOptionCard,
   SectionTitle,
   Select,
+  Spinner,
   Stack,
   StatChip,
   Subtitle,
@@ -189,6 +191,24 @@ export function getSubmittedAnswerMessage(revealTiming) {
     : '✓ Answer submitted. Waiting for the timer to finish.';
 }
 
+export function getCreateButtonLabel({ isLoading, isSignedInAiBlocked, user, hasOpenAI }) {
+  if (isLoading) {
+    return user && hasOpenAI ? 'Generating questions...' : 'Creating demo room...';
+  }
+
+  if (isSignedInAiBlocked) {
+    return 'Add credits to create AI game';
+  }
+
+  return user && hasOpenAI ? 'Create AI game' : 'Create demo game';
+}
+
+export function getCreateLoadingMessage({ user, hasOpenAI }) {
+  return user && hasOpenAI
+    ? 'GPT-5.4 is generating a fresh question set. This can take a few seconds.'
+    : 'Preparing your demo room with built-in questions.';
+}
+
 function MarketingHome() {
   const stats = [
     ['10-question rounds', 'Balanced pacing that fits short sessions and party play.'],
@@ -287,13 +307,13 @@ function CreatePage() {
   const paidCredits = usage?.credits ?? 0;
   const hasAiBalance = freeRemainingToday > 0 || paidCredits > 0;
   const isSignedInAiBlocked = Boolean(hasOpenAI && user && usage && !hasAiBalance);
-  const createButtonLabel = isLoading
-    ? 'Creating session...'
-    : isSignedInAiBlocked
-      ? 'Add credits to create AI game'
-      : user && hasOpenAI
-        ? 'Create AI game'
-        : 'Create demo game';
+  const createButtonLabel = getCreateButtonLabel({
+    isLoading,
+    isSignedInAiBlocked,
+    user,
+    hasOpenAI,
+  });
+  const createLoadingMessage = getCreateLoadingMessage({ user, hasOpenAI });
   const shouldShowHostGate = !user && !hostMode;
 
   useEffect(() => {
@@ -418,6 +438,22 @@ function CreatePage() {
 
         {error ? <Banner $tone="danger">{error}</Banner> : null}
         {authError ? <Banner $tone="danger">{authError}</Banner> : null}
+        {isLoading ? (
+          <Card
+            aria-live="polite"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{ marginBottom: 18, borderColor: 'rgba(56, 189, 248, 0.34)' }}
+          >
+            <Cluster gap="12px" align="center">
+              <Spinner aria-hidden="true" />
+              <div>
+                <strong>{createButtonLabel}</strong>
+                <HelperText style={{ marginTop: 4 }}>{createLoadingMessage}</HelperText>
+              </div>
+            </Cluster>
+          </Card>
+        ) : null}
 
         <form onSubmit={handleSubmit}>
           <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18, background: user ? theme.gradients.success : theme.gradients.accent }}>
@@ -464,6 +500,7 @@ function CreatePage() {
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="Martin"
+                  disabled={isLoading}
                   required
                 />
               </div>
@@ -473,6 +510,7 @@ function CreatePage() {
                   id="language"
                   value={language}
                   onChange={(event) => setLanguage(event.target.value)}
+                  disabled={isLoading}
                 >
                   <option value="English">English</option>
                   <option value="Estonian">Eesti keel</option>
@@ -492,6 +530,7 @@ function CreatePage() {
                 value={topic}
                 onChange={(event) => setTopic(event.target.value)}
                 placeholder="Indie games, Formula 1, space history..."
+                disabled={isLoading}
                 required
               />
             </div>
@@ -517,6 +556,7 @@ function CreatePage() {
                   type="button"
                   variant={questionTimeLimitMs === value ? 'primary' : 'secondary'}
                   compact
+                  disabled={isLoading}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setQuestionTimeLimitMs(value)}
                   aria-pressed={questionTimeLimitMs === value}
@@ -549,6 +589,7 @@ function CreatePage() {
                   type="button"
                   variant={revealTiming === value ? 'primary' : 'secondary'}
                   compact
+                  disabled={isLoading}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setRevealTiming(value)}
                   aria-pressed={revealTiming === value}
@@ -581,6 +622,7 @@ function CreatePage() {
                   type="button"
                   variant="secondary"
                   compact
+                  disabled={isLoading}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setTopic(suggestion)}
                 >
@@ -596,7 +638,8 @@ function CreatePage() {
               disabled={!username.trim() || !topic.trim() || isLoading || isSignedInAiBlocked}
               whileTap={{ scale: 0.98 }}
             >
-              {createButtonLabel}
+              {isLoading ? <Spinner aria-hidden="true" /> : null}
+              <span style={{ marginLeft: isLoading ? 8 : 0 }}>{createButtonLabel}</span>
             </Button>
             {isSignedInAiBlocked ? (
               <Button as={Link} to="/account" variant="secondary">
@@ -788,10 +831,35 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
           <StatChip>{revealTimingLabel}</StatChip>
         </Grid>
 
-        <div style={{ marginTop: 18 }}>
-          <Label htmlFor="share-link">Direct join link</Label>
-          <Input id="share-link" value={shareLink} readOnly onFocus={(event) => event.target.select()} />
-        </div>
+        <Grid gap="18px" columns="minmax(0, 1fr) auto" $mobileColumns="1fr" style={{ marginTop: 18, alignItems: 'end' }}>
+          <div>
+            <Label htmlFor="share-link">Direct join link</Label>
+            <Input id="share-link" value={shareLink} readOnly onFocus={(event) => event.target.select()} />
+            <HelperText style={{ marginTop: 8 }}>
+              Share this link or let friends scan the QR code to join on their own phones.
+            </HelperText>
+          </div>
+          <Stack gap="10px" style={{ alignItems: 'center' }}>
+            <Label as="div" style={{ marginBottom: 0 }}>
+              Scan to join
+            </Label>
+            <div
+              aria-label={`QR code for joining room ${session.sessionId}`}
+              role="img"
+              style={{
+                padding: 14,
+                borderRadius: 18,
+                background: '#ffffff',
+                boxShadow: '0 18px 36px rgba(2, 6, 23, 0.28)',
+              }}
+            >
+              <QRCodeSVG value={shareLink} size={196} bgColor="#ffffff" fgColor="#0f172a" level="M" />
+            </div>
+            <HelperText style={{ maxWidth: 220, textAlign: 'center' }}>
+              Bright screen and steady phone make scanning easier.
+            </HelperText>
+          </Stack>
+        </Grid>
 
         <ButtonRow style={{ marginTop: 16 }}>
           <Button type="button" variant="secondary" compact onClick={copyLink} whileTap={{ scale: 0.98 }}>

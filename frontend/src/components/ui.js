@@ -1,4 +1,4 @@
-import styled, { css } from 'styled-components';
+import styled, { css, keyframes } from 'styled-components';
 import { motion } from 'framer-motion';
 
 export const PageShell = styled.div`
@@ -279,6 +279,26 @@ export const Button = styled(motion.button).withConfig({
     cursor: not-allowed;
     transform: none;
   }
+`;
+
+const spin = keyframes`
+  to {
+    transform: rotate(360deg);
+  }
+`;
+
+export const Spinner = styled.span.withConfig({
+  shouldForwardProp: (prop) => !['$size'].includes(prop),
+})`
+  display: inline-flex;
+  width: ${({ $size = 18 }) => `${$size}px`};
+  height: ${({ $size = 18 }) => `${$size}px`};
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.86;
+  animation: ${spin} 0.72s linear infinite;
+  flex: 0 0 auto;
 `;
 
 export const AnswerButton = styled(Button)`
