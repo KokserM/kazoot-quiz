@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { fetchDemoTopics, createSession as requestCreateSession } from './lib/api';
 import { loadPlayerSession } from './lib/storage';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
+import { AccountStatusBar } from './components/AccountStatusBar';
 import { GameProvider, useGame } from './providers/GameProvider';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { theme } from './styles/theme';
@@ -37,7 +38,10 @@ const AccountPage = lazy(() => import('./pages/AccountPage'));
 function Shell({ children, dense = false }) {
   return (
     <PageShell $dense={dense}>
-      <CenteredContent>{children}</CenteredContent>
+      <CenteredContent>
+        <AccountStatusBar dense={dense} />
+        {children}
+      </CenteredContent>
     </PageShell>
   );
 }
@@ -269,6 +273,17 @@ function CreatePage() {
     ['timer', 'Wait for timer', 'Keeps suspense and gives everyone the full round.'],
     ['all_answered', 'Reveal when all answer', 'Moves faster when every connected player has locked in.'],
   ];
+  const freeRemainingToday = usage?.freeRemainingToday ?? 0;
+  const paidCredits = usage?.credits ?? 0;
+  const hasAiBalance = freeRemainingToday > 0 || paidCredits > 0;
+  const isSignedInAiBlocked = Boolean(hasOpenAI && user && usage && !hasAiBalance);
+  const createButtonLabel = isLoading
+    ? 'Creating session...'
+    : isSignedInAiBlocked
+      ? 'Add credits to create AI game'
+      : user && hasOpenAI
+        ? 'Create AI game'
+        : 'Create demo game';
 
   useEffect(() => {
     fetchDemoTopics()
@@ -330,38 +345,37 @@ function CreatePage() {
         {authError ? <Banner $tone="danger">{authError}</Banner> : null}
 
         <form onSubmit={handleSubmit}>
-          <Card
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            style={{
-              marginBottom: 18,
-              background: theme.gradients.success,
-            }}
-          >
+          <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18, background: theme.gradients.success }}>
             <HeaderRow style={{ marginBottom: 0 }}>
               <div>
-                <Label>AI generation access</Label>
+                <Label>{user ? 'AI hosting balance' : 'Sign in to generate unique AI games'}</Label>
                 <HelperText>
                   {user
-                    ? `${usage?.freeRemainingToday ?? 0} free AI games left today. ${usage?.credits ?? 0} paid credits available.`
-                    : 'Sign in with Google for 3 free AI-generated games per day. Demo fallback games stay free.'}
+                    ? isSignedInAiBlocked
+                      ? 'You are out of free AI games and paid credits. Add credits or subscribe before creating another AI-generated game.'
+                      : `${freeRemainingToday} free AI games left today. ${paidCredits} paid credits available. Free games are used before paid credits.`
+                    : 'Google unlocks 3 free GPT-5.4 games per day for hosts. You can still create a demo room without signing in.'}
                 </HelperText>
               </div>
               {user ? (
-                <Button as={Link} to="/account" type="button" variant="secondary" compact>
-                  Account & credits
-                </Button>
+                <ButtonRow>
+                  <Button as={Link} to="/account" type="button" variant={isSignedInAiBlocked ? 'primary' : 'secondary'} compact>
+                    {isSignedInAiBlocked ? 'Add credits' : 'Account & credits'}
+                  </Button>
+                </ButtonRow>
               ) : (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  compact
-                  disabled={!isConfigured}
-                  onClick={signIn}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  Continue with Google
-                </Button>
+                <ButtonRow>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    compact
+                    disabled={!isConfigured}
+                    onClick={signIn}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    Continue with Google
+                  </Button>
+                </ButtonRow>
               )}
             </HeaderRow>
           </Card>
@@ -502,11 +516,16 @@ function CreatePage() {
           <ButtonRow style={{ marginTop: 28 }}>
             <Button
               type="submit"
-              disabled={!username.trim() || !topic.trim() || isLoading}
+              disabled={!username.trim() || !topic.trim() || isLoading || isSignedInAiBlocked}
               whileTap={{ scale: 0.98 }}
             >
-              {isLoading ? 'Creating session...' : 'Create game'}
+              {createButtonLabel}
             </Button>
+            {isSignedInAiBlocked ? (
+              <Button as={Link} to="/account" variant="secondary">
+                View plans
+              </Button>
+            ) : null}
           </ButtonRow>
         </form>
       </GlassPanel>

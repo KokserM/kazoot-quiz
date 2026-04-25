@@ -145,7 +145,9 @@ export const ButtonRow = styled.div`
   }
 `;
 
-export const Button = styled(motion.button)`
+export const Button = styled(motion.button).withConfig({
+  shouldForwardProp: (prop) => !['compact', 'variant'].includes(prop),
+})`
   display: inline-flex;
   align-items: center;
   justify-content: center;

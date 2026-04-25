@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createCheckoutSession, fetchBillingCatalog } from '../lib/api';
 import { useAuth } from '../auth/AuthProvider';
+import { AccountStatusBar, getDisplayName } from '../components/AccountStatusBar';
 import {
   Banner,
   Button,
@@ -22,9 +23,48 @@ import {
 function Shell({ children }) {
   return (
     <PageShell>
-      <CenteredContent>{children}</CenteredContent>
+      <CenteredContent>
+        <AccountStatusBar />
+        {children}
+      </CenteredContent>
     </PageShell>
   );
+}
+
+const PLAN_DETAILS = {
+  plus_monthly: {
+    title: 'Plus monthly',
+    badge: 'Best for regular hosts',
+    description: 'A predictable monthly credit refill for weekly quiz nights and small communities.',
+    cta: 'Subscribe to Plus',
+  },
+  pro_monthly: {
+    title: 'Pro monthly',
+    badge: 'Best value',
+    description: 'More credits for frequent hosts, classrooms, teams, and bigger recurring events.',
+    cta: 'Subscribe to Pro',
+  },
+  credits_100: {
+    title: '100 credit pack',
+    badge: 'One-time top-up',
+    description: 'Add credits without a subscription. Good when you only need an occasional boost.',
+    cta: 'Buy 100 credits',
+  },
+  credits_250: {
+    title: '250 credit pack',
+    badge: 'Flexible pack',
+    description: 'A larger one-time top-up for busier periods without committing monthly.',
+    cta: 'Buy 250 credits',
+  },
+};
+
+function getPlanDetails(plan) {
+  return PLAN_DETAILS[plan.id] || {
+    title: `${plan.credits} credit plan`,
+    badge: plan.mode === 'subscription' ? 'Subscription' : 'Credit pack',
+    description: `${plan.credits} AI game credits ${plan.mode === 'subscription' ? 'included each billing cycle.' : 'added after payment.'}`,
+    cta: 'Choose plan',
+  };
 }
 
 export default function AccountPage() {
@@ -32,6 +72,9 @@ export default function AccountPage() {
   const [plans, setPlans] = useState([]);
   const [error, setError] = useState('');
   const [isLoadingPlan, setIsLoadingPlan] = useState('');
+  const freeRemainingToday = usage?.freeRemainingToday ?? 0;
+  const paidCredits = usage?.credits ?? 0;
+  const needsCredits = Boolean(user && usage && freeRemainingToday <= 0 && paidCredits <= 0);
 
   useEffect(() => {
     fetchBillingCatalog()
@@ -88,32 +131,50 @@ export default function AccountPage() {
           </Card>
         ) : (
           <>
-            <Grid gap="12px" $mobileColumns="1fr">
-              <StatChip>{user.email}</StatChip>
-              <StatChip>{usage?.freeRemainingToday ?? 0} free AI games left today</StatChip>
-              <StatChip>{usage?.credits ?? 0} paid credits</StatChip>
-              <StatChip>Tier: {usage?.tier || 'free'}</StatChip>
-            </Grid>
+            <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ background: needsCredits ? 'rgba(245, 158, 11, 0.14)' : undefined }}>
+              <Eyebrow>{needsCredits ? 'Action needed' : 'Ready to host'}</Eyebrow>
+              <div style={{ marginTop: 14 }}>
+                <SectionTitle>
+                  {needsCredits ? 'Add credits to keep generating AI games.' : `Welcome back, ${getDisplayName(user)}.`}
+                </SectionTitle>
+                <Subtitle style={{ marginTop: 8 }}>
+                  {needsCredits
+                    ? 'Your free AI games are used for today and you have no paid credits. Subscribe or buy a pack before hosting the next AI-generated game.'
+                    : 'Your free daily games are used first. Paid credits are only spent after the free allowance runs out.'}
+                </Subtitle>
+              </div>
 
-            <ButtonRow style={{ marginTop: 18 }}>
-              <Button type="button" variant="secondary" compact onClick={refreshUsage} whileTap={{ scale: 0.98 }}>
-                Refresh usage
-              </Button>
-              <Button type="button" variant="ghost" compact onClick={doSignOut} whileTap={{ scale: 0.98 }}>
-                Sign out
-              </Button>
-            </ButtonRow>
+              <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 18 }}>
+                <StatChip>{user.email}</StatChip>
+                <StatChip>{freeRemainingToday} free AI games left today</StatChip>
+                <StatChip>{paidCredits} paid credits</StatChip>
+                <StatChip>Tier: {usage?.tier || 'free'}</StatChip>
+              </Grid>
+
+              <ButtonRow style={{ marginTop: 18 }}>
+                <Button type="button" variant="secondary" compact onClick={refreshUsage} whileTap={{ scale: 0.98 }}>
+                  Refresh usage
+                </Button>
+                <Button as={Link} to="/create" compact>
+                  Host a game
+                </Button>
+                <Button type="button" variant="ghost" compact onClick={doSignOut} whileTap={{ scale: 0.98 }}>
+                  Sign out
+                </Button>
+              </ButtonRow>
+            </Card>
 
             <Grid gap="16px" $mobileColumns="1fr" style={{ marginTop: 24 }}>
-              {plans.map((plan) => (
+              {plans.map((plan) => {
+                const details = getPlanDetails(plan);
+
+                return (
                 <Card key={plan.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                  <Eyebrow>{details.badge}</Eyebrow>
                   <SectionTitle style={{ fontSize: '1.2rem' }}>
-                    {plan.id === 'plus_monthly'
-                      ? 'Plus monthly'
-                      : plan.id === 'pro_monthly'
-                        ? 'Pro monthly'
-                        : `${plan.credits} credit pack`}
+                    {details.title}
                   </SectionTitle>
+                  <Subtitle style={{ marginTop: 8 }}>{details.description}</Subtitle>
                   <HelperText>
                     {plan.credits} AI game credits {plan.mode === 'subscription' ? 'included each billing cycle.' : 'added after payment.'}
                   </HelperText>
@@ -125,11 +186,12 @@ export default function AccountPage() {
                       onClick={() => handleCheckout(plan.id)}
                       whileTap={{ scale: 0.98 }}
                     >
-                      {isLoadingPlan === plan.id ? 'Opening checkout...' : plan.configured ? 'Choose plan' : 'Not configured'}
+                      {isLoadingPlan === plan.id ? 'Opening checkout...' : plan.configured ? details.cta : 'Not configured'}
                     </Button>
                   </ButtonRow>
                 </Card>
-              ))}
+                );
+              })}
             </Grid>
           </>
         )}
