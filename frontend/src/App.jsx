@@ -204,9 +204,22 @@ export function getCreateButtonLabel({ isLoading, isSignedInAiBlocked, user, has
 }
 
 export function getCreateLoadingMessage({ user, hasOpenAI }) {
+  return getCreateLoadingMessages({ user, hasOpenAI })[0];
+}
+
+export function getCreateLoadingMessages({ user, hasOpenAI }) {
   return user && hasOpenAI
-    ? 'GPT-5.4 is generating a fresh question set. This can take a few seconds.'
-    : 'Preparing your demo room with built-in questions.';
+    ? [
+        'Generating fresh questions...',
+        'Thinking hard to provide a challenge...',
+        'Checking the answers make sense...',
+        'Almost ready to launch...',
+      ]
+    : [
+        'Preparing your demo room...',
+        'Loading built-in questions...',
+        'Almost ready to launch...',
+      ];
 }
 
 function MarketingHome() {
@@ -313,7 +326,9 @@ function CreatePage() {
     user,
     hasOpenAI,
   });
-  const createLoadingMessage = getCreateLoadingMessage({ user, hasOpenAI });
+  const createLoadingMessages = getCreateLoadingMessages({ user, hasOpenAI });
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const createLoadingMessage = createLoadingMessages[loadingMessageIndex % createLoadingMessages.length];
   const shouldShowHostGate = !user && !hostMode;
 
   useEffect(() => {
@@ -326,6 +341,19 @@ function CreatePage() {
         setTopics([]);
       });
   }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingMessageIndex(0);
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      setLoadingMessageIndex((currentIndex) => currentIndex + 1);
+    }, 1800);
+
+    return () => clearInterval(intervalId);
+  }, [isLoading]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -438,22 +466,6 @@ function CreatePage() {
 
         {error ? <Banner $tone="danger">{error}</Banner> : null}
         {authError ? <Banner $tone="danger">{authError}</Banner> : null}
-        {isLoading ? (
-          <Card
-            aria-live="polite"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            style={{ marginBottom: 18, borderColor: 'rgba(56, 189, 248, 0.34)' }}
-          >
-            <Cluster gap="12px" align="center">
-              <Spinner aria-hidden="true" />
-              <div>
-                <strong>{createButtonLabel}</strong>
-                <HelperText style={{ marginTop: 4 }}>{createLoadingMessage}</HelperText>
-              </div>
-            </Cluster>
-          </Card>
-        ) : null}
 
         <form onSubmit={handleSubmit}>
           <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18, background: user ? theme.gradients.success : theme.gradients.accent }}>
@@ -645,6 +657,29 @@ function CreatePage() {
               <Button as={Link} to="/account" variant="secondary">
                 View plans
               </Button>
+            ) : null}
+            {isLoading ? (
+              <HelperText
+                aria-live="polite"
+                style={{
+                  alignSelf: 'center',
+                  flex: '1 1 220px',
+                  margin: 0,
+                  minHeight: 24,
+                  overflow: 'hidden',
+                }}
+              >
+                <motion.span
+                  key={createLoadingMessage}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.22 }}
+                  style={{ display: 'inline-block' }}
+                >
+                  {createLoadingMessage}
+                </motion.span>
+              </HelperText>
             ) : null}
           </Cluster>
         </form>

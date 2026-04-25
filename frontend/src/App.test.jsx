@@ -3,6 +3,7 @@ import { afterEach, expect, test } from 'vitest';
 import App, {
   getCreateButtonLabel,
   getCreateLoadingMessage,
+  getCreateLoadingMessages,
   getRevealTimingLabel,
   getRemainingQuestionMs,
   getSessionPhase,
@@ -105,6 +106,9 @@ test('formats reveal timing labels and submitted answer copy', () => {
 });
 
 test('formats create loading copy for AI and demo sessions', () => {
+  const aiMessages = getCreateLoadingMessages({ user: { id: 'user-1' }, hasOpenAI: true });
+  const demoMessages = getCreateLoadingMessages({ user: null, hasOpenAI: true });
+
   expect(
     getCreateButtonLabel({
       isLoading: true,
@@ -113,7 +117,8 @@ test('formats create loading copy for AI and demo sessions', () => {
       hasOpenAI: true,
     })
   ).toBe('Generating questions...');
-  expect(getCreateLoadingMessage({ user: { id: 'user-1' }, hasOpenAI: true })).toMatch(/GPT-5\.4/i);
+  expect(getCreateLoadingMessage({ user: { id: 'user-1' }, hasOpenAI: true })).toBe(aiMessages[0]);
+  expect(aiMessages).toContain('Thinking hard to provide a challenge...');
 
   expect(
     getCreateButtonLabel({
@@ -123,7 +128,8 @@ test('formats create loading copy for AI and demo sessions', () => {
       hasOpenAI: true,
     })
   ).toBe('Creating demo room...');
-  expect(getCreateLoadingMessage({ user: null, hasOpenAI: true })).toMatch(/demo room/i);
+  expect(getCreateLoadingMessage({ user: null, hasOpenAI: true })).toBe(demoMessages[0]);
+  expect(demoMessages).toContain('Loading built-in questions...');
 });
 
 test('stored player sessions are scoped by username and can be cleared', () => {
