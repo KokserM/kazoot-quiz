@@ -19,16 +19,19 @@ const questionTimeLimitSchema = z.union([
   z.literal(20000),
 ]);
 
+const revealTimingSchema = z.enum(['timer', 'all_answered']);
+
 const createSessionSchema = z.object({
   topic: z.string().trim().min(2).max(80),
   language: z.string().trim().min(2).max(40).default('English'),
   questionTimeLimitMs: questionTimeLimitSchema.default(20000),
+  revealTiming: revealTimingSchema.default('timer'),
 });
 
 const generateQuizSchema = createSessionSchema;
 
 const joinGameSchema = z.object({
-  sessionId: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/),
+  sessionId: z.string().trim().toUpperCase().regex(/^(?:[A-Z0-9]{6}|[A-Z0-9]{8})$/),
   username: z.string().trim().min(2).max(32),
   playerToken: z.string().trim().min(8).max(128).optional(),
   isCreator: z.boolean().optional().default(false),
@@ -44,5 +47,6 @@ module.exports = {
   generateQuizSchema,
   joinGameSchema,
   quizSchema,
+  revealTimingSchema,
   submitAnswerSchema,
 };

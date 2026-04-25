@@ -21,11 +21,31 @@ Set these in Railway:
 ```text
 NODE_ENV=production
 FRONTEND_URL=https://your-service-or-custom-domain
+CORS_ALLOWED_ORIGINS=https://your-service-or-custom-domain,https://your-custom-domain
 OPENAI_API_KEY=sk-...         # optional
 OPENAI_MODEL=gpt-5.4          # optional
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=...
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PLUS_PRICE_ID=price_...
+STRIPE_PRO_PRICE_ID=price_...
+STRIPE_CREDIT_PACK_100_PRICE_ID=price_...
+STRIPE_CREDIT_PACK_250_PRICE_ID=price_...
+FREE_AI_GAMES_PER_DAY=3
+DAILY_OPENAI_BUDGET_USD=10
+MONTHLY_OPENAI_BUDGET_USD=100
 QUESTION_TIME_LIMIT_MS=20000  # optional
 SESSION_RETENTION_MS=1800000  # optional
 ENDED_SESSION_RETENTION_MS=600000  # optional
+MAX_ACTIVE_SESSIONS=500            # optional
+MAX_PLAYERS_PER_SESSION=250        # optional
+MAX_CONNECTED_PLAYERS=5000         # optional
+DEGRADED_ACTIVE_SESSIONS=400       # optional
+DEGRADED_CONNECTED_PLAYERS=4000    # optional
+DEGRADED_HEAP_USED_MB=384          # optional
+SOCKET_PING_INTERVAL_MS=25000      # optional
+SOCKET_PING_TIMEOUT_MS=30000       # optional
 ```
 
 Notes:
@@ -33,6 +53,9 @@ Notes:
 - Do not hardcode `PORT` in Railway. The platform injects it automatically.
 - If `OPENAI_API_KEY` is missing, Kazoot falls back to demo question sets.
 - `FRONTEND_URL` should match the public domain you want to allow through CORS.
+- Use `CORS_ALLOWED_ORIGINS` for any extra custom domains or Railway aliases; production no longer trusts every `*.railway.app` origin by default.
+- Run `backend/db/001_ai_cost_controls.sql` in Supabase before setting live Stripe prices.
+- Configure Google as a Supabase Auth provider and add your Railway domain to allowed redirect URLs.
 
 ## Build and start behavior
 
@@ -50,7 +73,37 @@ The backend serves `frontend/dist` in production.
 - Question timing is server-authoritative and synced to the client with `questionEndsAt` and `serverTime`.
 - Host changes are broadcast automatically if the current host disconnects.
 - Sessions are cleaned up after inactivity.
-- `GET /health` includes store mode, active sessions, sessions by state, socket index size, and uptime.
+- Hosts can choose whether results reveal when the timer ends or when all connected players have answered.
+- GPT-5.4 generation requires a signed-in host and consumes free daily quota or paid credits.
+- Anonymous hosts can still create demo/fallback games without spending GPT tokens.
+- `GET /health` includes store mode, active sessions, sessions by state, socket index size, uptime, memory usage, event-loop delay, configured limits, and degraded reasons.
+
+## Monetization runbook
+
+1. Create Supabase project and run `backend/db/001_ai_cost_controls.sql`.
+2. Enable Google login in Supabase Auth.
+3. Create Stripe products/prices for Plus, Pro, and credit packs.
+4. Add the Stripe webhook endpoint: `https://your-domain/api/billing/webhook`.
+5. Test with Stripe test mode before using live price IDs.
+6. Monitor `quiz_generations.estimated_cost_usd`, free usage, credit balances, and failed/refunded generations.
+7. Start with conservative caps and adjust pricing after real token usage data.
+
+## Scale runbook
+
+For the current single-replica architecture:
+
+1. Keep Railway scaled to exactly one replica.
+2. Monitor `GET /health` for `status`, `activeSessions`, `connectedPlayers`, `socketIndexSize`, memory, and `degradedReasons`.
+3. Raise or lower `MAX_ACTIVE_SESSIONS`, `MAX_PLAYERS_PER_SESSION`, and `MAX_CONNECTED_PLAYERS` after real load testing.
+4. Deploy during quiet periods because active in-memory sessions are lost on restart.
+
+Before scaling to multiple Railway replicas:
+
+1. Move sessions, players, scores, and game state into Redis or a database.
+2. Add the Socket.IO Redis adapter so room broadcasts work across replicas.
+3. Use sticky sessions for Engine.IO polling/WebSocket traffic.
+4. Replace process-local timers with a shared timer worker, Redis TTL/pub-sub, or persisted round-deadline strategy.
+5. Run load tests with realistic room counts before advertising support for thousands of concurrent players.
 
 ## Verification checklist
 

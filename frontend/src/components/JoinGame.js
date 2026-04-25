@@ -152,7 +152,7 @@ const JoinGame = ({ onJoinGame, onBack, prefilledGameCode = '' }) => {
 
   const handleSessionCodeChange = (e) => {
     const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (value.length <= 6) {
+    if (value.length <= 8) {
       setSessionCode(value);
     }
   };
@@ -198,10 +198,10 @@ const JoinGame = ({ onJoinGame, onBack, prefilledGameCode = '' }) => {
             type="text"
             value={sessionCode}
             onChange={handleSessionCodeChange}
-            placeholder="ABC123"
+            placeholder="ABCD1234"
             className="session-code"
             required
-            maxLength={6}
+            maxLength={8}
           />
         </InputGroup>
 
@@ -235,7 +235,7 @@ const JoinGame = ({ onJoinGame, onBack, prefilledGameCode = '' }) => {
       >
         <InfoTitle>How to Join</InfoTitle>
         <InfoText>
-          Ask the game host for the 6-character game code. Once you enter it, 
+          Ask the game host for the room code. Once you enter it,
           you'll be taken to the lobby where you can wait for the game to start!
         </InfoText>
       </InfoCard>

@@ -1,7 +1,9 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
+
+const SESSION_ID_LENGTH = 8;
 
 function generateSessionId() {
-  return uuidv4().replace(/-/g, '').slice(0, 6).toUpperCase();
+  return randomUUID().replace(/-/g, '').slice(0, SESSION_ID_LENGTH).toUpperCase();
 }
 
 function sortLeaderboard(players) {
@@ -24,13 +26,14 @@ function sortLeaderboard(players) {
 }
 
 class GameSession {
-  constructor({ id, topic, language, questions, questionSource, questionTimeLimitMs }) {
+  constructor({ id, topic, language, questions, questionSource, questionTimeLimitMs, revealTiming }) {
     this.id = id;
     this.topic = topic;
     this.language = language;
     this.questions = questions;
     this.questionSource = questionSource;
     this.questionTimeLimitMs = questionTimeLimitMs;
+    this.revealTiming = revealTiming;
     this.players = new Map();
     this.gameState = 'waiting';
     this.currentQuestionIndex = -1;
@@ -84,8 +87,8 @@ class GameSession {
   }
 
   addPlayer({ username, socketId, wantsHost = false }) {
-    const playerId = uuidv4();
-    const playerToken = uuidv4();
+    const playerId = randomUUID();
+    const playerToken = randomUUID();
     const existingHost = this.getHost();
     const joinedAt = Date.now();
 
@@ -150,6 +153,7 @@ class GameSession {
       language: this.language,
       questionCount: this.questions.length,
       questionTimeLimitMs: this.questionTimeLimitMs,
+      revealTiming: this.revealTiming,
       questionSource: this.questionSource,
       playerCount: this.players.size,
       connectedPlayerCount: this.getConnectedPlayers().length,
@@ -238,6 +242,7 @@ class SessionStore {
       currentQuestionIndex: session.currentQuestionIndex,
       currentRoundId: session.currentRoundId,
       questionTimeLimitMs: session.questionTimeLimitMs,
+      revealTiming: session.revealTiming,
       playerCount: session.players.size,
       connectedPlayerCount: session.getConnectedPlayers().length,
       createdAt: session.createdAt,
@@ -319,7 +324,7 @@ class SessionStore {
     return removed;
   }
 
-  createSession({ topic, language, questions, questionSource, questionTimeLimitMs }) {
+  createSession({ topic, language, questions, questionSource, questionTimeLimitMs, revealTiming }) {
     let sessionId = generateSessionId();
 
     while (this.sessions.has(sessionId)) {
@@ -333,6 +338,7 @@ class SessionStore {
       questions,
       questionSource,
       questionTimeLimitMs,
+      revealTiming,
     });
 
     this.sessions.set(sessionId, session);
@@ -341,6 +347,7 @@ class SessionStore {
       topic: session.topic,
       questionCount: session.questions.length,
       questionTimeLimitMs: session.questionTimeLimitMs,
+      revealTiming: session.revealTiming,
       activeSessions: this.sessions.size,
     });
     return session;

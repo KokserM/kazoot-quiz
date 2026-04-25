@@ -42,6 +42,14 @@ Create `backend/.env` and add the values you need:
 OPENAI_API_KEY=your_openai_api_key_here
 NODE_ENV=development
 FRONTEND_URL=http://localhost:3000
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+```
+
+Create `frontend/.env` if you enable Google login:
+
+```powershell
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 Optional settings:
@@ -51,6 +59,26 @@ OPENAI_MODEL=gpt-5.4
 QUESTION_TIME_LIMIT_MS=20000
 SESSION_RETENTION_MS=1800000
 ENDED_SESSION_RETENTION_MS=600000
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PLUS_PRICE_ID=price_...
+STRIPE_PRO_PRICE_ID=price_...
+STRIPE_CREDIT_PACK_100_PRICE_ID=price_...
+STRIPE_CREDIT_PACK_250_PRICE_ID=price_...
+FREE_AI_GAMES_PER_DAY=3
+DAILY_OPENAI_BUDGET_USD=10
+MONTHLY_OPENAI_BUDGET_USD=100
+MAX_ACTIVE_SESSIONS=500
+MAX_PLAYERS_PER_SESSION=250
+MAX_CONNECTED_PLAYERS=5000
+DEGRADED_ACTIVE_SESSIONS=400
+DEGRADED_CONNECTED_PLAYERS=4000
+DEGRADED_HEAP_USED_MB=384
+SOCKET_PING_INTERVAL_MS=25000
+SOCKET_PING_TIMEOUT_MS=30000
+CORS_ALLOWED_ORIGINS=https://your-service.up.railway.app,https://your-domain.com
 ```
 
 ### Run the app
@@ -73,10 +101,21 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 
 ## Game flow
 
-1. A host creates a session and gets a 6-character room code.
+1. A host creates a session and gets an 8-character room code.
 2. Players join through `/session/<code>` or by entering the code manually.
-3. The server owns the round timer and scoring, then broadcasts results to every player.
-4. If a player refreshes, Kazoot reuses the stored player token to reconnect them to the same seat.
+3. The host chooses whether results reveal when the timer ends or as soon as all connected players answer.
+4. The server owns the round timer and scoring, then broadcasts results to every player.
+5. If a player refreshes, Kazoot reuses the stored player token to reconnect them to the same seat.
+
+## AI generation and billing
+
+- Anonymous hosts can create demo/fallback games, but GPT-5.4 generation requires Google sign-in through Supabase Auth.
+- Signed-in users get 3 free AI-generated games per day by default.
+- Paid usage is tracked as AI game credits: `1 credit = 1 generated 10-question quiz`.
+- Suggested starting tiers are Plus (`$5/month`, 100 credits), Pro (`$12/month`, 350 credits), and credit packs (`$5/100`, `$10/250`).
+- Stripe Checkout handles payments; Stripe webhooks grant credits through an append-only ledger.
+- Run `backend/db/001_ai_cost_controls.sql` in Supabase before enabling auth or billing.
+- Prompt inputs are treated as data and screened for instruction-like text before OpenAI is called.
 
 ## Realtime behavior
 
@@ -84,9 +123,10 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 - Reconnects work while the Railway instance stays alive.
 - Sessions do not survive instance restarts because there is no shared database or Redis layer yet.
 - Production is intentionally `single-instance-memory` mode. Keep the Railway service at exactly one replica.
-- CORS is restricted to configured origins plus Railway domains in production.
-- `/health` now reports store mode, session state counts, socket index size, and uptime.
+- CORS is restricted to `FRONTEND_URL` plus explicit `CORS_ALLOWED_ORIGINS` entries in production.
+- `/health` now reports store mode, session state counts, socket index size, uptime, memory, event-loop delay, and configured limits.
 - `/diagnostics/sessions` is available outside production for session integrity and snapshot debugging.
+- The single-replica caps protect the Node process from runaway room or player counts; tune them after load testing your Railway plan.
 
 ## API and socket contract
 
@@ -95,6 +135,10 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 - `POST /api/create-session`
 - `POST /api/generate-quiz`
 - `GET /api/demo-topics`
+- `GET /api/me/usage`
+- `GET /api/billing/catalog`
+- `POST /api/billing/create-checkout-session`
+- `POST /api/billing/webhook`
 - `GET /health`
 
 ### Socket events
@@ -120,4 +164,4 @@ Run backend and frontend automated tests.
 
 ## Known boundary
 
-Kazoot is intentionally optimized for a robust single-instance Railway deployment. If you later want multi-instance scale or restart-safe sessions, the next step is moving session state and socket fan-out to shared infrastructure such as Redis plus persistent storage.
+Kazoot is intentionally optimized for a robust single-instance Railway deployment. If you later want multi-instance scale, restart-safe sessions, or thousands of concurrent players across replicas, the next step is moving session state, socket fan-out, and question timers to shared infrastructure such as Redis plus persistent storage.

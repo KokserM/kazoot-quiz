@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import App, {
+  getRevealTimingLabel,
   getRemainingQuestionMs,
   getSessionPhase,
+  getSubmittedAnswerMessage,
   shouldAttemptQuestionResync,
   shouldShowSessionJoinLoading,
 } from './App';
@@ -86,4 +88,11 @@ test('only attempts timeout resync when disconnected', () => {
 
 test('local development keeps websocket fallback transports', () => {
   expect(getSocketTransports()).toEqual(['polling', 'websocket']);
+});
+
+test('formats reveal timing labels and submitted answer copy', () => {
+  expect(getRevealTimingLabel('all_answered')).toBe('Reveal: when all answer');
+  expect(getRevealTimingLabel('timer')).toBe('Reveal: timer ends');
+  expect(getSubmittedAnswerMessage('all_answered')).toMatch(/other players/i);
+  expect(getSubmittedAnswerMessage('timer')).toMatch(/timer/i);
 });

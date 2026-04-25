@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ThemeProvider } from 'styled-components';
 import { motion } from 'framer-motion';
 import { fetchDemoTopics, createSession as requestCreateSession } from './lib/api';
 import { loadPlayerSession } from './lib/storage';
+import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { GameProvider, useGame } from './providers/GameProvider';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { theme } from './styles/theme';
@@ -30,6 +31,8 @@ import {
   Subtitle,
   Title,
 } from './components/ui';
+
+const AccountPage = lazy(() => import('./pages/AccountPage'));
 
 function Shell({ children, dense = false }) {
   return (
@@ -162,6 +165,16 @@ export function shouldAttemptQuestionResync({ remainingMs, connectionStatus, has
   return remainingMs === 0 && hasResyncHandler && connectionStatus !== 'connected';
 }
 
+export function getRevealTimingLabel(revealTiming) {
+  return revealTiming === 'all_answered' ? 'Reveal: when all answer' : 'Reveal: timer ends';
+}
+
+export function getSubmittedAnswerMessage(revealTiming) {
+  return revealTiming === 'all_answered'
+    ? '✓ Answer submitted. Waiting for the other players to lock in.'
+    : '✓ Answer submitted. Waiting for the timer to finish.';
+}
+
 function MarketingHome() {
   const stats = [
     ['10-question rounds', 'Balanced pacing that fits short sessions and party play.'],
@@ -235,10 +248,12 @@ function MarketingHome() {
 
 function CreatePage() {
   const navigate = useNavigate();
+  const { accessToken, authError, isConfigured, refreshUsage, signIn, usage, user } = useAuth();
   const [username, setUsername] = useState('');
   const [topic, setTopic] = useState('');
   const [language, setLanguage] = useState('English');
   const [questionTimeLimitMs, setQuestionTimeLimitMs] = useState('20000');
+  const [revealTiming, setRevealTiming] = useState('timer');
   const [topics, setTopics] = useState([]);
   const [hasOpenAI, setHasOpenAI] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -249,6 +264,10 @@ function CreatePage() {
     ['10000', '10 seconds'],
     ['15000', '15 seconds'],
     ['20000', '20 seconds'],
+  ];
+  const revealTimingOptions = [
+    ['timer', 'Wait for timer', 'Keeps suspense and gives everyone the full round.'],
+    ['all_answered', 'Reveal when all answer', 'Moves faster when every connected player has locked in.'],
   ];
 
   useEffect(() => {
@@ -272,7 +291,9 @@ function CreatePage() {
         topic,
         language,
         questionTimeLimitMs: Number(questionTimeLimitMs),
-      });
+        revealTiming,
+      }, accessToken);
+      await refreshUsage();
       navigate(`/session/${session.sessionId}`, {
         state: {
           username: username.trim(),
@@ -306,8 +327,45 @@ function CreatePage() {
         </HeaderRow>
 
         {error ? <Banner $tone="danger">{error}</Banner> : null}
+        {authError ? <Banner $tone="danger">{authError}</Banner> : null}
 
         <form onSubmit={handleSubmit}>
+          <Card
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            style={{
+              marginBottom: 18,
+              background: theme.gradients.success,
+            }}
+          >
+            <HeaderRow style={{ marginBottom: 0 }}>
+              <div>
+                <Label>AI generation access</Label>
+                <HelperText>
+                  {user
+                    ? `${usage?.freeRemainingToday ?? 0} free AI games left today. ${usage?.credits ?? 0} paid credits available.`
+                    : 'Sign in with Google for 3 free AI-generated games per day. Demo fallback games stay free.'}
+                </HelperText>
+              </div>
+              {user ? (
+                <Button as={Link} to="/account" type="button" variant="secondary" compact>
+                  Account & credits
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  compact
+                  disabled={!isConfigured}
+                  onClick={signIn}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Continue with Google
+                </Button>
+              )}
+            </HeaderRow>
+          </Card>
+
           <Grid columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
             <div>
               <Label htmlFor="host-name">Host name</Label>
@@ -381,6 +439,44 @@ function CreatePage() {
             </ButtonRow>
           </Card>
 
+          <Card
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            style={{
+              marginTop: 18,
+              background: theme.gradients.success,
+            }}
+          >
+            <Label>Reveal results</Label>
+            <HelperText>
+              Choose whether rounds resolve as soon as every connected player answers, or always wait for the timer.
+            </HelperText>
+            <Grid gap="12px" columns="repeat(auto-fit, minmax(220px, 1fr))" $mobileColumns="1fr" style={{ marginTop: 14 }}>
+              {revealTimingOptions.map(([value, label, description]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  variant={revealTiming === value ? 'primary' : 'secondary'}
+                  compact
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setRevealTiming(value)}
+                  aria-pressed={revealTiming === value}
+                  style={{
+                    alignItems: 'flex-start',
+                    flexDirection: 'column',
+                    minHeight: 92,
+                    textAlign: 'left',
+                  }}
+                >
+                  <span>{label}</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, opacity: 0.74 }}>
+                    {description}
+                  </span>
+                </Button>
+              ))}
+            </Grid>
+          </Card>
+
           {topics.length ? (
             <Grid
               gap="10px"
@@ -424,7 +520,7 @@ function JoinPage() {
   const params = new URLSearchParams(location.search);
   const initialCode = params.get('code') || '';
   const [username, setUsername] = useState('');
-  const [sessionId, setSessionId] = useState(initialCode.toUpperCase().slice(0, 6));
+  const [sessionId, setSessionId] = useState(initialCode.toUpperCase().slice(0, 8));
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -445,7 +541,7 @@ function JoinPage() {
             <div style={{ marginTop: 16 }}>
               <SectionTitle>Join a live session</SectionTitle>
               <Subtitle>
-                Enter your name and the 6-character code, or open a direct session link from your
+                Enter your name and the room code, or open a direct session link from your
                 host to reconnect automatically.
               </Subtitle>
             </div>
@@ -473,9 +569,9 @@ function JoinPage() {
                 id="join-code"
                 value={sessionId}
                 onChange={(event) =>
-                  setSessionId(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))
+                  setSessionId(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))
                 }
-                placeholder="ABC123"
+                placeholder="ABCD1234"
                 required
               />
             </div>
@@ -484,7 +580,7 @@ function JoinPage() {
           <ButtonRow style={{ marginTop: 28 }}>
             <Button
               type="submit"
-              disabled={!username.trim() || sessionId.trim().length !== 6}
+              disabled={!username.trim() || ![6, 8].includes(sessionId.trim().length)}
               whileTap={{ scale: 0.98 }}
             >
               Join session
@@ -569,6 +665,7 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
   const shareLink = `${window.location.origin}/session/${session.sessionId}`;
   const canStart = session.you?.isHost;
   const roundTimerLabel = `${Math.round(session.questionTimeLimitMs / 1000)}s timer`;
+  const revealTimingLabel = getRevealTimingLabel(session.revealTiming);
 
   async function copyLink() {
     await navigator.clipboard.writeText(shareLink);
@@ -587,6 +684,7 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
           <StatChip>Code: {session.sessionId}</StatChip>
           <StatChip>Questions: {session.questionCount}</StatChip>
           <StatChip>{roundTimerLabel}</StatChip>
+          <StatChip>{revealTimingLabel}</StatChip>
         </Grid>
 
         <div style={{ marginTop: 18 }}>
@@ -679,7 +777,7 @@ function useSyncedCountdown(question) {
   return remainingMs;
 }
 
-function QuestionView({ question, onSubmitAnswer, onResyncSession, connectionStatus }) {
+function QuestionView({ question, revealTiming, onSubmitAnswer, onResyncSession, connectionStatus }) {
   const remainingMs = useSyncedCountdown(question);
   const remainingSeconds = Math.ceil(remainingMs / 1000);
   const progress = question ? Math.max(0, Math.min(1, remainingMs / question.timeLimit)) : 0;
@@ -821,7 +919,7 @@ function QuestionView({ question, onSubmitAnswer, onResyncSession, connectionSta
 
       {hasSubmitted || hasPendingSubmission ? (
         <Banner style={{ marginTop: 14, marginBottom: 0 }}>
-          {hasSubmitted ? '✓ Answer submitted. Waiting for the server to reveal the result.' : 'Sending your answer...'}
+          {hasSubmitted ? getSubmittedAnswerMessage(revealTiming) : 'Sending your answer...'}
         </Banner>
       ) : remainingMs === 0 ? (
         <Banner style={{ marginTop: 14, marginBottom: 0 }}>
@@ -1155,6 +1253,7 @@ function SessionPage() {
             {showGameplayShell ? (
               <QuestionView
                 question={question}
+                revealTiming={activeSession.revealTiming || question.revealTiming}
                 onSubmitAnswer={submitAnswer}
                 onResyncSession={resyncSession}
                 connectionStatus={connectionStatus}
@@ -1186,6 +1285,22 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<MarketingHome />} />
       <Route path="/create" element={<CreatePage />} />
+      <Route
+        path="/account"
+        element={
+          <Suspense
+            fallback={
+              <Shell>
+                <GlassPanel style={{ padding: 32 }}>
+                  <Subtitle>Loading account...</Subtitle>
+                </GlassPanel>
+              </Shell>
+            }
+          >
+            <AccountPage />
+          </Suspense>
+        }
+      />
       <Route path="/join" element={<JoinPage />} />
       <Route path="/session/:sessionId" element={<SessionPage />} />
     </Routes>
@@ -1196,11 +1311,13 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyle />
-      <GameProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </GameProvider>
+      <AuthProvider>
+        <GameProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </GameProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

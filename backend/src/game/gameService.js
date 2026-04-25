@@ -20,6 +20,15 @@ function buildAnswerStats(players, questionIndex) {
   return stats;
 }
 
+function haveAllConnectedPlayersAnswered(session) {
+  const connectedPlayers = session.getConnectedPlayers();
+  if (connectedPlayers.length === 0) {
+    return false;
+  }
+
+  return connectedPlayers.every((player) => Boolean(player.answers[session.currentQuestionIndex]));
+}
+
 function formatValidationError(error) {
   if (error instanceof ZodError) {
     return error.issues.map((issue) => issue.message).join(', ');
@@ -29,10 +38,11 @@ function formatValidationError(error) {
 }
 
 class GameService {
-  constructor({ io, store, questionService, config }) {
+  constructor({ io, store, questionService, aiUsageService, config }) {
     this.io = io;
     this.store = store;
     this.questionService = questionService;
+    this.aiUsageService = aiUsageService;
     this.config = config;
   }
 
@@ -49,9 +59,59 @@ class GameService {
     );
   }
 
-  async createSession(payload) {
-    const { topic, language, questionTimeLimitMs } = createSessionSchema.parse(payload);
-    const quiz = await this.questionService.generateQuiz(topic, language);
+  async generateQuizForContext({ topic, language }, context = {}) {
+    let reservation = null;
+    let quiz = null;
+    const shouldUseOpenAI = this.questionService.hasOpenAI() && context.user;
+
+    try {
+      if (this.questionService.hasOpenAI() && !context.user) {
+        quiz = this.questionService.generateDemoQuiz(topic, language);
+      } else {
+        if (shouldUseOpenAI && this.aiUsageService) {
+          reservation = await this.aiUsageService.reserveQuizGeneration({
+            user: context.user,
+            topic,
+            language,
+            model: this.config.openAiModel,
+            ipAddress: context.ipAddress,
+          });
+        }
+
+        quiz = await this.questionService.generateQuiz(topic, language);
+      }
+    } catch (error) {
+      if (reservation && this.aiUsageService) {
+        await this.aiUsageService.refundQuizGeneration(reservation, error);
+      }
+      throw error;
+    }
+
+    if (reservation && this.aiUsageService) {
+      if (quiz.source === 'openai') {
+        await this.aiUsageService.completeQuizGeneration(reservation, {
+          quiz,
+          usage: quiz.usage,
+        });
+      } else {
+        await this.aiUsageService.refundQuizGeneration(
+          reservation,
+          new Error('OpenAI generation fell back to demo questions')
+        );
+      }
+    }
+
+    return quiz;
+  }
+
+  async createSession(payload, context = {}) {
+    const { topic, language, questionTimeLimitMs, revealTiming } = createSessionSchema.parse(payload);
+    const activeSessions = this.store.getHealthSnapshot().activeSessions;
+    if (activeSessions >= this.config.maxActiveSessions) {
+      throw new Error('The server is at the active room limit. Try again in a few minutes.');
+    }
+
+    const quiz = await this.generateQuizForContext({ topic, language }, context);
     const validatedQuiz = quizSchema.parse(quiz);
 
     const session = this.store.createSession({
@@ -60,6 +120,7 @@ class GameService {
       questions: validatedQuiz.questions,
       questionSource: quiz.source || 'demo',
       questionTimeLimitMs,
+      revealTiming,
     });
 
     return {
@@ -68,13 +129,14 @@ class GameService {
       language: session.language,
       questionCount: session.questions.length,
       questionTimeLimitMs: session.questionTimeLimitMs,
+      revealTiming: session.revealTiming,
       questionSource: session.questionSource,
     };
   }
 
-  async generateQuiz(payload) {
+  async generateQuiz(payload, context = {}) {
     const { topic, language } = generateQuizSchema.parse(payload);
-    return this.questionService.generateQuiz(topic, language);
+    return this.generateQuizForContext({ topic, language }, context);
   }
 
   emitSessionUpdate(session) {
@@ -107,6 +169,7 @@ class GameService {
       question: question.question,
       choices: question.choices,
       timeLimit: session.questionTimeLimitMs,
+      revealTiming: session.revealTiming,
       questionStartedAt: session.currentQuestionStartedAt,
       questionEndsAt: session.currentQuestionEndsAt,
       serverTime: Date.now(),
@@ -131,6 +194,7 @@ class GameService {
       earnedPoints: playerAnswer ? playerAnswer.points : 0,
       answerWasCorrect: playerAnswer ? playerAnswer.isCorrect : false,
       allChoices: currentQuestion.choices,
+      revealTiming: session.revealTiming,
     };
   }
 
@@ -245,6 +309,15 @@ class GameService {
         throw new Error('Game already in progress. Rejoin with your saved player token.');
       }
 
+      const totalConnectedPlayers = this.store.getHealthSnapshot().connectedPlayers;
+      if (totalConnectedPlayers >= this.config.maxConnectedPlayers) {
+        throw new Error('The server is at the connected player limit. Try again in a few minutes.');
+      }
+
+      if (session.players.size >= this.config.maxPlayersPerSession) {
+        throw new Error('This room is full.');
+      }
+
       if (session.hasUsernameConflict(payload.username)) {
         throw new Error('That name is already in use');
       }
@@ -330,6 +403,7 @@ class GameService {
       questionIndex,
       connectedPlayerCount: session.getConnectedPlayers().length,
       endsAt: session.currentQuestionEndsAt,
+      revealTiming: session.revealTiming,
     });
     return question;
   }
@@ -404,6 +478,15 @@ class GameService {
       points,
       timeRemainingMs,
     });
+
+    if (session.revealTiming === 'all_answered' && haveAllConnectedPlayersAnswered(session)) {
+      this.log('all_connected_players_answered', {
+        sessionId: session.id,
+        roundId: session.currentRoundId,
+        connectedPlayerCount: session.getConnectedPlayers().length,
+      });
+      this.finishQuestion(session.id, session.currentRoundId);
+    }
 
     return {
       accepted: true,
@@ -500,6 +583,16 @@ class GameService {
         newAdminId: newHost.playerId,
         newAdminUsername: newHost.username,
       });
+    }
+
+    if (session.revealTiming === 'all_answered' && haveAllConnectedPlayersAnswered(session)) {
+      this.log('all_connected_players_answered_after_disconnect', {
+        sessionId: session.id,
+        roundId: session.currentRoundId,
+        connectedPlayerCount: session.getConnectedPlayers().length,
+      });
+      this.finishQuestion(session.id, session.currentRoundId);
+      return;
     }
 
     this.emitSessionUpdate(session);

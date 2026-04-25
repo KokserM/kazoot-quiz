@@ -6,6 +6,9 @@ const { GameService } = require('./game/gameService');
 const { QuestionService } = require('./quiz/questionService');
 const { createApp } = require('./http/createApp');
 const { registerSocketHandlers } = require('./socket/registerSocketHandlers');
+const { SupabaseAuthService } = require('./auth/supabaseAuth');
+const { AiUsageService } = require('./billing/aiUsageService');
+const { StripeBillingService } = require('./billing/stripeBillingService');
 
 function logRuntimeMessage(level, message, details = {}) {
   const serializedDetails = Object.keys(details).length ? ` ${JSON.stringify(details)}` : '';
@@ -34,13 +37,20 @@ function createServer() {
   const questionService = new QuestionService({
     apiKey: config.openAiApiKey,
     model: config.openAiModel,
+    config,
   });
+  const authService = new SupabaseAuthService({ config });
+  const aiUsageService = new AiUsageService({ config });
+  const billingService = new StripeBillingService({ config, aiUsageService });
 
   const placeholderGameService = {};
   const app = createApp({
     gameService: placeholderGameService,
     store,
     questionService,
+    authService,
+    aiUsageService,
+    billingService,
     config,
   });
 
@@ -62,12 +72,16 @@ function createServer() {
       maxDisconnectionDuration: 2 * 60 * 1000,
       skipMiddlewares: true,
     },
+    pingInterval: config.socketPingIntervalMs,
+    pingTimeout: config.socketPingTimeoutMs,
+    maxHttpBufferSize: config.socketMaxHttpBufferSize,
   });
 
   const gameService = new GameService({
     io,
     store,
     questionService,
+    aiUsageService,
     config,
   });
 
@@ -102,6 +116,9 @@ function createServer() {
     io,
     store,
     questionService,
+    authService,
+    aiUsageService,
+    billingService,
     gameService,
   };
 }
