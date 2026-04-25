@@ -153,11 +153,18 @@ export default function AccountPage() {
                 </Subtitle>
               </div>
 
-              <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 18 }}>
-                <StatChip>{user.email}</StatChip>
-                <StatChip>{freeRemainingToday} free AI games left today</StatChip>
-                <StatChip>{paidCredits} paid credits</StatChip>
-                <StatChip>Tier: {usage?.tier || 'free'}</StatChip>
+              <Grid
+                gap="12px"
+                columns="repeat(auto-fit, minmax(min(100%, 220px), 1fr))"
+                $mobileColumns="1fr"
+                style={{ marginTop: 18 }}
+              >
+                <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{user.email}</StatChip>
+                <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                  {freeRemainingToday} free AI games left today
+                </StatChip>
+                <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{paidCredits} paid credits</StatChip>
+                <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>Tier: {usage?.tier || 'free'}</StatChip>
               </Grid>
 
               <ButtonRow style={{ marginTop: 18 }}>
@@ -185,7 +192,7 @@ export default function AccountPage() {
                     animate={{ opacity: 1 }}
                     style={{ background: isSubscription ? 'rgba(124, 58, 237, 0.16)' : undefined }}
                   >
-                    <Stack gap="12px">
+                    <Stack gap="12px" style={{ height: '100%' }}>
                       <Cluster justify="space-between" align="flex-start">
                         <Eyebrow>{details.badge}</Eyebrow>
                         <StatChip>{details.family}</StatChip>
@@ -203,6 +210,7 @@ export default function AccountPage() {
                         disabled={!plan.configured || isLoadingPlan === plan.id}
                         onClick={() => handleCheckout(plan.id)}
                         whileTap={{ scale: 0.98 }}
+                        style={{ alignSelf: 'center', marginTop: 'auto' }}
                       >
                         {isLoadingPlan === plan.id ? 'Opening checkout...' : plan.configured ? details.cta : 'Not configured'}
                       </Button>
