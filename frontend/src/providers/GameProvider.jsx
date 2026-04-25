@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { getBackendUrl } from '../lib/api';
-import { clearPlayerSession, loadPlayerSession, savePlayerSession } from '../lib/storage';
+import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlayerSession } from '../lib/storage';
 
 const GameContext = createContext(null);
 
@@ -91,7 +91,7 @@ export function GameProvider({ children }) {
       return;
     }
 
-    const saved = forceFresh ? null : loadPlayerSession(sessionId);
+    const saved = forceFresh ? null : loadPlayerSession(sessionId, { username });
     awaitingJoinRef.current = true;
     joinIntentRef.current = {
       sessionId,
@@ -105,6 +105,7 @@ export function GameProvider({ children }) {
       username,
       isCreator,
       playerToken: saved?.playerToken,
+      hostToken: saved?.hostToken,
     });
   }, []);
 
@@ -177,6 +178,7 @@ export function GameProvider({ children }) {
       setGameEnd(null);
       savePlayerSession(payload.sessionId, {
         playerToken: payload.playerToken,
+        hostToken: payload.hostToken,
         playerId: payload.playerId,
         username: payload.you?.username || payload.username,
       });
@@ -259,9 +261,13 @@ export function GameProvider({ children }) {
     });
 
     socket.on('game-end', (payload) => {
+      const activeSessionId = sessionRef.current?.sessionId || joinIntentRef.current?.sessionId;
       setGameEnd(payload);
       setQuestion(null);
       setResults(null);
+      if (activeSessionId) {
+        markPlayerSessionEnded(activeSessionId);
+      }
       logSocketEvent('game_end', {
         leaderboardSize: payload.leaderboard?.length,
       });
@@ -436,6 +442,42 @@ export function GameProvider({ children }) {
       isCreator: Boolean(activeSession?.you?.isHost || joinIntent?.isCreator),
     });
   }, [emitJoinGame, ensureSocket]);
+
+  useEffect(() => {
+    const handleResume = () => {
+      const activeSession = sessionRef.current;
+      const joinIntent = joinIntentRef.current;
+      const sessionId = activeSession?.sessionId || joinIntent?.sessionId;
+      const username = activeSession?.you?.username || joinIntent?.username;
+
+      if (!sessionId || !username || awaitingJoinRef.current) {
+        return;
+      }
+
+      if (document.visibilityState && document.visibilityState !== 'visible') {
+        return;
+      }
+
+      const socket = socketRef.current;
+      if (!socket?.connected) {
+        setConnectionStatus('connecting');
+        socket?.connect();
+        return;
+      }
+
+      resyncSession();
+    };
+
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('online', handleResume);
+    document.addEventListener('visibilitychange', handleResume);
+
+    return () => {
+      window.removeEventListener('focus', handleResume);
+      window.removeEventListener('online', handleResume);
+      document.removeEventListener('visibilitychange', handleResume);
+    };
+  }, [resyncSession]);
 
   const leaveSession = useCallback(
     (sessionId, { forgetPlayer = false } = {}) => {

@@ -169,7 +169,14 @@ export function AccountStatusBar({ dense = false, mode = 'default' }) {
               <DesktopOnly>Upgrade</DesktopOnly>
               <MobileOnly>Account</MobileOnly>
             </Button>
-            <Button className="account-secondary-action" type="button" variant="ghost" compact onClick={signOut}>
+            <Button
+              className="account-secondary-action"
+              type="button"
+              variant="ghost"
+              compact
+              title="Sign out before handing a shared device to someone else."
+              onClick={signOut}
+            >
               Sign out
             </Button>
           </>

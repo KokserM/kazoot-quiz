@@ -62,7 +62,11 @@ export function AuthProvider({ children }) {
           setAuthError(error.message);
         }
       },
-      signOut,
+      signOut: async () => {
+        setUsage(null);
+        setAuthError('');
+        await signOut();
+      },
       usage,
       user,
     }),

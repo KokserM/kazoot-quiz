@@ -1,10 +1,12 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs');
 const { monitorEventLoopDelay } = require('perf_hooks');
 const { isOriginAllowed } = require('../config');
 const { formatValidationError } = require('../game/gameService');
+const { FixedWindowRateLimiter } = require('../security/rateLimiter');
 
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 eventLoopDelay.enable();
@@ -42,17 +44,56 @@ async function getOptionalUser(req, authService) {
 }
 
 function getClientIp(req) {
-  return (
-    req.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    req.socket?.remoteAddress ||
-    ''
-  );
+  return req.ip || req.socket?.remoteAddress || '';
+}
+
+function requireDiagnosticsAccess(req, config) {
+  if (config.nodeEnv !== 'production') {
+    return true;
+  }
+
+  return Boolean(config.diagnosticsSecret && req.get('x-diagnostics-secret') === config.diagnosticsSecret);
 }
 
 function createApp({ gameService, store, questionService, authService, aiUsageService, billingService, config }) {
   const app = express();
   const corsOptions = createCorsOptions();
+  const createSessionLimiter = new FixedWindowRateLimiter({
+    limit: config.createSessionRateLimitPer15Min,
+    windowMs: 15 * 60_000,
+  });
 
+  app.set('trust proxy', config.trustProxy);
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          baseUri: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          fontSrc: ["'self'", 'data:'],
+          connectSrc: [
+            "'self'",
+            config.frontendUrl || "'self'",
+            config.supabaseUrl || 'https://*.supabase.co',
+            'https://*.supabase.co',
+            'wss://*.supabase.co',
+            'https://api.stripe.com',
+            'https://checkout.stripe.com',
+          ].filter(Boolean),
+          formAction: ["'self'", 'https://checkout.stripe.com'],
+        },
+      },
+      referrerPolicy: {
+        policy: 'strict-origin-when-cross-origin',
+      },
+      crossOriginEmbedderPolicy: false,
+    })
+  );
   app.use(cors(corsOptions));
   // Stripe needs the unparsed body; keep this route before express.json().
   app.post('/api/billing/webhook', express.raw({ type: 'application/json', limit: '256kb' }), async (req, res) => {
@@ -85,10 +126,19 @@ function createApp({ gameService, store, questionService, authService, aiUsageSe
       degradedReasons.push('heap_used_high');
     }
 
-    res.status(200).json({
+    const statusPayload = {
       status: degradedReasons.length ? 'degraded' : 'healthy',
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
+    };
+
+    if (config.nodeEnv === 'production' && !config.detailedHealthEnabled) {
+      res.status(200).json(statusPayload);
+      return;
+    }
+
+    res.status(200).json({
+      ...statusPayload,
       ...healthSnapshot,
       limits: {
         maxActiveSessions: config.maxActiveSessions,
@@ -121,8 +171,12 @@ function createApp({ gameService, store, questionService, authService, aiUsageSe
     });
   });
 
-  if (config.nodeEnv !== 'production') {
-    app.get('/diagnostics/sessions', (req, res) => {
+  app.get('/diagnostics/sessions', (req, res) => {
+    if (!requireDiagnosticsAccess(req, config)) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
       res.status(200).json({
         storeMode: store.getStoreMode(),
         socketIndexSize: store.getSocketIndexSize(),
@@ -130,7 +184,6 @@ function createApp({ gameService, store, questionService, authService, aiUsageSe
         sessions: store.getSessionDiagnostics(),
       });
     });
-  }
 
   app.get('/api/demo-topics', (req, res) => {
     const demoQuestions = require('../../demoQuestions');
@@ -184,6 +237,12 @@ function createApp({ gameService, store, questionService, authService, aiUsageSe
 
   app.post('/api/generate-quiz', async (req, res) => {
     try {
+      const limit = createSessionLimiter.consume(`generate:${getClientIp(req)}`);
+      if (!limit.allowed) {
+        res.status(429).json({ error: 'Too many quiz generation attempts. Please try again later.' });
+        return;
+      }
+
       const user = await getOptionalUser(req, authService);
       if (questionService.hasOpenAI() && !user) {
         res.status(401).json({ error: 'Sign in to generate AI questions. Demo games are free.' });
@@ -202,6 +261,12 @@ function createApp({ gameService, store, questionService, authService, aiUsageSe
 
   app.post('/api/create-session', async (req, res) => {
     try {
+      const limit = createSessionLimiter.consume(`create:${getClientIp(req)}`);
+      if (!limit.allowed) {
+        res.status(429).json({ error: 'Too many rooms created from this network. Please try again later.' });
+        return;
+      }
+
       const user = await getOptionalUser(req, authService);
       const session = await gameService.createSession(req.body, {
         user,

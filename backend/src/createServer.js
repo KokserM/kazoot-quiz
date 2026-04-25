@@ -101,6 +101,11 @@ function createServer() {
       action: 'keep this service scaled to one replica',
       consequence: 'active sessions do not survive restarts or multi-replica routing',
     });
+    if (!config.frontendUrl || config.allowedOrigins.size === 0) {
+      logRuntimeMessage('warn', 'Production origin allow-list is incomplete', {
+        action: 'set FRONTEND_URL and CORS_ALLOWED_ORIGINS to your Railway/custom-domain origins',
+      });
+    }
   }
 
   const reapInterval = setInterval(() => {

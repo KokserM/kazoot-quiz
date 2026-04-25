@@ -1179,7 +1179,7 @@ function GameEndView({ leaderboard, onLeave }) {
   );
 }
 
-function JoinSessionCard({ sessionId, defaultUsername, onJoin }) {
+function JoinSessionCard({ sessionId, defaultUsername, savedSession, onJoin }) {
   const [username, setUsername] = useState(defaultUsername || '');
 
   return (
@@ -1196,6 +1196,23 @@ function JoinSessionCard({ sessionId, defaultUsername, onJoin }) {
               then join the lobby.
             </Subtitle>
           </Stack>
+          {savedSession?.username ? (
+            <Card
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              style={{ width: 'min(420px, 100%)', margin: '24px auto 0', textAlign: 'center' }}
+            >
+              <Stack gap="12px" style={{ alignItems: 'center' }}>
+                <Eyebrow>Saved seat found</Eyebrow>
+                <Subtitle style={{ margin: 0 }}>
+                  Reconnect to this room as {savedSession.username}, or join as someone else below.
+                </Subtitle>
+                <Button type="button" compact onClick={() => onJoin(savedSession.username, false)}>
+                  Reconnect as {savedSession.username}
+                </Button>
+              </Stack>
+            </Card>
+          ) : null}
           <form
             style={{ width: 'min(420px, 100%)', margin: '24px auto 0', textAlign: 'left' }}
             onSubmit={(event) => {
@@ -1272,7 +1289,7 @@ function SessionPage() {
       return;
     }
 
-    const username = sessionState.username || savedSession?.username;
+    const username = sessionState.username;
     if (!username) {
       return;
     }
@@ -1282,6 +1299,9 @@ function SessionPage() {
       sessionId: normalizedSessionId,
       username,
       isCreator: Boolean(sessionState.isCreator),
+      forceFresh:
+        Boolean(savedSession?.username) &&
+        savedSession.username.trim().toLowerCase() !== String(username).trim().toLowerCase(),
     });
   }, [joinSession, normalizedSessionId, savedSession?.username, session?.sessionId, sessionState.isCreator, sessionState.username]);
 
@@ -1307,7 +1327,7 @@ function SessionPage() {
   }
 
   const activeSession = session?.sessionId === normalizedSessionId ? session : null;
-  const hasKnownUsername = Boolean(sessionState.username || savedSession?.username);
+  const hasKnownUsername = Boolean(sessionState.username);
   const showJoinLoading = shouldShowSessionJoinLoading({
     activeSession,
     joinAttempted: joinAttemptedRef.current,
@@ -1379,7 +1399,8 @@ function SessionPage() {
         ) : (
           <JoinSessionCard
             sessionId={normalizedSessionId}
-            defaultUsername={sessionState.username || savedSession?.username || ''}
+            defaultUsername={sessionState.username || ''}
+            savedSession={savedSession}
             onJoin={handleManualJoin}
           />
         )}

@@ -22,6 +22,10 @@ const DEFAULT_MAX_AI_GENERATIONS_PER_USER_PER_HOUR = 5;
 const DEFAULT_MAX_AI_GENERATIONS_PER_IP_PER_HOUR = 10;
 const DEFAULT_OPENAI_EST_INPUT_COST_PER_1M = 2.5;
 const DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M = 15;
+const DEFAULT_CREATE_SESSION_RATE_LIMIT_PER_15_MIN = 20;
+const DEFAULT_JOIN_RATE_LIMIT_PER_MIN = 30;
+const DEFAULT_FAILED_JOIN_RATE_LIMIT_PER_15_MIN = 20;
+const DEFAULT_SOCKET_EVENT_RATE_LIMIT_PER_10_SEC = 80;
 
 function toNumber(value, fallback) {
   const parsed = Number(value);
@@ -180,6 +184,25 @@ const config = {
   stripeCreditPack250PriceId: process.env.STRIPE_CREDIT_PACK_250_PRICE_ID || '',
   billingSuccessUrl: process.env.BILLING_SUCCESS_URL || `${frontendUrl || 'http://localhost:3000'}/account?billing=success`,
   billingCancelUrl: process.env.BILLING_CANCEL_URL || `${frontendUrl || 'http://localhost:3000'}/account?billing=cancelled`,
+  trustProxy: process.env.TRUST_PROXY || (process.env.RAILWAY_ENVIRONMENT_ID ? '1' : 'loopback'),
+  detailedHealthEnabled: process.env.DETAILED_HEALTH === 'true',
+  diagnosticsSecret: process.env.DIAGNOSTICS_SECRET || '',
+  createSessionRateLimitPer15Min: toNumber(
+    process.env.CREATE_SESSION_RATE_LIMIT_PER_15_MIN,
+    DEFAULT_CREATE_SESSION_RATE_LIMIT_PER_15_MIN
+  ),
+  joinRateLimitPerMin: toNumber(
+    process.env.JOIN_RATE_LIMIT_PER_MIN,
+    DEFAULT_JOIN_RATE_LIMIT_PER_MIN
+  ),
+  failedJoinRateLimitPer15Min: toNumber(
+    process.env.FAILED_JOIN_RATE_LIMIT_PER_15_MIN,
+    DEFAULT_FAILED_JOIN_RATE_LIMIT_PER_15_MIN
+  ),
+  socketEventRateLimitPer10Sec: toNumber(
+    process.env.SOCKET_EVENT_RATE_LIMIT_PER_10_SEC,
+    DEFAULT_SOCKET_EVENT_RATE_LIMIT_PER_10_SEC
+  ),
   storeMode: 'single-instance-memory',
   railway: {
     projectId: process.env.RAILWAY_PROJECT_ID || '',
@@ -197,7 +220,7 @@ const config = {
 
 function isOriginAllowed(origin) {
   if (!origin) {
-    return true;
+    return config.nodeEnv !== 'production';
   }
 
   const normalizedOrigin = normalizeOrigin(origin);

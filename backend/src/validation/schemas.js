@@ -31,9 +31,10 @@ const createSessionSchema = z.object({
 const generateQuizSchema = createSessionSchema;
 
 const joinGameSchema = z.object({
-  sessionId: z.string().trim().toUpperCase().regex(/^(?:[A-Z0-9]{6}|[A-Z0-9]{8})$/),
+  sessionId: z.string().trim().toUpperCase().regex(/^(?:[A-Z0-9]{6}|[A-Z0-9]{8}|[A-Z0-9]{10})$/),
   username: z.string().trim().min(2).max(32),
   playerToken: z.string().trim().min(8).max(128).optional(),
+  hostToken: z.string().trim().min(8).max(128).optional(),
   isCreator: z.boolean().optional().default(false),
 });
 

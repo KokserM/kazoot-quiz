@@ -43,6 +43,7 @@ class AiUsageService {
       payments: new Set(),
       subscriptions: new Map(),
     };
+    this.userLocks = new Map();
   }
 
   isConfigured() {
@@ -104,6 +105,56 @@ class AiUsageService {
     }
 
     return count || 0;
+  }
+
+  async countReservedOrSuccessfulGenerationsSince(userId, sinceIso) {
+    if (!userId) {
+      return 0;
+    }
+
+    if (!this.client) {
+      return this.memory.generations.filter(
+        (generation) =>
+          generation.userId === userId &&
+          ['reserved', 'succeeded'].includes(generation.status) &&
+          generation.source === 'openai' &&
+          generation.createdAt >= sinceIso
+      ).length;
+    }
+
+    const { count, error } = await this.client
+      .from('quiz_generations')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('source', 'openai')
+      .in('status', ['reserved', 'succeeded'])
+      .gte('created_at', sinceIso);
+
+    if (error) {
+      throw new Error(`Failed to read reserved usage count: ${error.message}`);
+    }
+
+    return count || 0;
+  }
+
+  async withUserLock(userId, operation) {
+    const previous = this.userLocks.get(userId) || Promise.resolve();
+    let release;
+    const current = new Promise((resolve) => {
+      release = resolve;
+    });
+    const chained = previous.then(() => current);
+    this.userLocks.set(userId, chained);
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.userLocks.get(userId) === chained) {
+        this.userLocks.delete(userId);
+      }
+    }
   }
 
   async getUsageSummary(userId) {
@@ -198,10 +249,16 @@ class AiUsageService {
       throw new Error('Sign in to generate AI questions. Demo games are free.');
     }
 
+    return this.withUserLock(user.id, () =>
+      this.reserveQuizGenerationUnlocked({ user, topic, language, model, ipAddress })
+    );
+  }
+
+  async reserveQuizGenerationUnlocked({ user, topic, language, model, ipAddress }) {
     await this.enforceRateLimits({ userId: user.id, ipAddress });
     await this.enforceBudgetCaps();
 
-    const freeUsedToday = await this.countSuccessfulGenerationsSince(user.id, startOfTodayIso());
+    const freeUsedToday = await this.countReservedOrSuccessfulGenerationsSince(user.id, startOfTodayIso());
     const credits = await this.getCreditBalance(user.id);
     const useFreeQuota = freeUsedToday < this.config.freeAiGamesPerDay;
     const creditCost = this.config.aiCreditCostPerQuiz;

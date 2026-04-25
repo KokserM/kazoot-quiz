@@ -164,7 +164,7 @@ test('session uses the host-selected timer length', async () => {
     const storedSession = runtime.store.getSession(session.sessionId);
 
     assert.equal(session.questionTimeLimitMs, 5000);
-    assert.match(session.sessionId, /^[A-Z0-9]{8}$/);
+    assert.match(session.sessionId, /^[A-Z0-9]{10}$/);
     assert.equal(storedSession.questionTimeLimitMs, 5000);
 
     const host = connectClient(runtime.baseUrl);
@@ -312,6 +312,64 @@ test('payment records are idempotent before granting credits', async () => {
   }
 });
 
+test('parallel AI reservations count reserved free quota and cannot overspend credits', async () => {
+  const runtime = await startTestServer();
+  const previousFreeLimit = runtime.aiUsageService.config.freeAiGamesPerDay;
+  const previousCreditCost = runtime.aiUsageService.config.aiCreditCostPerQuiz;
+
+  try {
+    runtime.aiUsageService.config.freeAiGamesPerDay = 1;
+    runtime.aiUsageService.config.aiCreditCostPerQuiz = 1;
+
+    const user = {
+      id: '00000000-0000-4000-8000-000000000099',
+      email: 'race@example.com',
+    };
+
+    await runtime.aiUsageService.grantCredits({
+      userId: user.id,
+      credits: 1,
+      reason: 'test_grant',
+      sourceId: 'parallel-reservation-credit',
+    });
+
+    const reservations = await Promise.allSettled([
+      runtime.aiUsageService.reserveQuizGeneration({
+        user,
+        topic: '90s Movies',
+        language: 'English',
+        model: 'gpt-5.4',
+        ipAddress: '127.0.0.1',
+      }),
+      runtime.aiUsageService.reserveQuizGeneration({
+        user,
+        topic: '90s Movies',
+        language: 'English',
+        model: 'gpt-5.4',
+        ipAddress: '127.0.0.1',
+      }),
+      runtime.aiUsageService.reserveQuizGeneration({
+        user,
+        topic: '90s Movies',
+        language: 'English',
+        model: 'gpt-5.4',
+        ipAddress: '127.0.0.1',
+      }),
+    ]);
+
+    const fulfilled = reservations.filter((result) => result.status === 'fulfilled');
+    const rejected = reservations.filter((result) => result.status === 'rejected');
+    assert.equal(fulfilled.length, 2);
+    assert.equal(rejected.length, 1);
+    assert.match(rejected[0].reason.message, /out of AI game credits/i);
+    assert.equal(await runtime.aiUsageService.getCreditBalance(user.id), 0);
+  } finally {
+    runtime.aiUsageService.config.freeAiGamesPerDay = previousFreeLimit;
+    runtime.aiUsageService.config.aiCreditCostPerQuiz = previousCreditCost;
+    await runtime.close();
+  }
+});
+
 test('player tokens allow reconnecting to the same seat', async () => {
   const runtime = await startTestServer();
 
@@ -343,6 +401,86 @@ test('player tokens allow reconnecting to the same seat', async () => {
     assert.equal(rejoinedPayload.playerId, originalPlayerId);
 
     secondSocket.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('saved player token cannot be reused under a different name after the game starts', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, 'Video Games');
+    const firstSocket = connectClient(runtime.baseUrl);
+    const firstJoin = onceEventWithTimeout(firstSocket, 'joined-game');
+
+    firstSocket.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'PlayerOne',
+      isCreator: true,
+    });
+
+    const joinedPayload = await firstJoin;
+    const questionStarted = onceEventWithTimeout(firstSocket, 'question-start');
+    firstSocket.emit('start-game');
+    await questionStarted;
+    firstSocket.disconnect();
+    await delay(50);
+
+    const secondSocket = connectClient(runtime.baseUrl);
+    const errorPromise = onceEventWithTimeout(secondSocket, 'error');
+    secondSocket.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'DifferentPlayer',
+      playerToken: joinedPayload.playerToken,
+    });
+
+    const errorPayload = await errorPromise;
+    assert.match(errorPayload.message, /does not match this player name/i);
+
+    secondSocket.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('original host can reclaim controls from a temporary host after reconnecting', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, '90s Movies');
+    const host = connectClient(runtime.baseUrl);
+    const guest = connectClient(runtime.baseUrl);
+
+    const hostJoined = onceEventWithTimeout(host, 'joined-game');
+    host.emit('join-game', { sessionId: session.sessionId, username: 'Host', isCreator: true });
+    const hostState = await hostJoined;
+
+    const guestJoined = onceEventWithTimeout(guest, 'joined-game');
+    guest.emit('join-game', { sessionId: session.sessionId, username: 'Guest' });
+    await guestJoined;
+
+    const temporaryHostPromise = onceEventWithTimeout(guest, 'admin-changed');
+    host.disconnect();
+    const temporaryHost = await temporaryHostPromise;
+    assert.equal(temporaryHost.newAdminUsername, 'Guest');
+
+    const returningHost = connectClient(runtime.baseUrl);
+    const reclaimedHostPromise = onceEventWithTimeout(guest, 'admin-changed');
+    const rejoinedPromise = onceEventWithTimeout(returningHost, 'joined-game');
+    returningHost.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Host',
+      playerToken: hostState.playerToken,
+    });
+
+    const rejoined = await rejoinedPromise;
+    const reclaimedHost = await reclaimedHostPromise;
+    assert.equal(rejoined.you?.isHost, true);
+    assert.equal(reclaimedHost.newAdminUsername, 'Host');
+
+    guest.disconnect();
+    returningHost.disconnect();
   } finally {
     await runtime.close();
   }
@@ -948,6 +1086,37 @@ test('room player cap rejects new players with a clear error', async () => {
     guest.disconnect();
   } finally {
     runtime.gameService.config.maxPlayersPerSession = previousMaxPlayersPerSession;
+    await runtime.close();
+  }
+});
+
+test('repeated failed room guesses return a generic rate-limited error', async () => {
+  const runtime = await startTestServer();
+  const previousLimit = runtime.gameService.failedJoinRateLimiter.limit;
+
+  try {
+    runtime.gameService.failedJoinRateLimiter.limit = 1;
+    const socket = connectClient(runtime.baseUrl);
+
+    const firstError = onceEventWithTimeout(socket, 'error');
+    socket.emit('join-game', {
+      sessionId: 'ABCDEFGHJK',
+      username: 'Guesser',
+    });
+    const firstPayload = await firstError;
+    assert.match(firstPayload.message, /Game session not found/i);
+
+    const secondError = onceEventWithTimeout(socket, 'error');
+    socket.emit('join-game', {
+      sessionId: 'ABCDEFGHJL',
+      username: 'Guesser',
+    });
+    const secondPayload = await secondError;
+    assert.match(secondPayload.message, /Unable to join this room/i);
+
+    socket.disconnect();
+  } finally {
+    runtime.gameService.failedJoinRateLimiter.limit = previousLimit;
     await runtime.close();
   }
 });

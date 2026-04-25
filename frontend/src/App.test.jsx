@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { expect, test } from 'vitest';
+import { afterEach, expect, test } from 'vitest';
 import App, {
   getRevealTimingLabel,
   getRemainingQuestionMs,
@@ -9,6 +9,11 @@ import App, {
   shouldShowSessionJoinLoading,
 } from './App';
 import { getSocketTransports } from './providers/GameProvider';
+import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlayerSession } from './lib/storage';
+
+afterEach(() => {
+  localStorage.clear();
+});
 
 test('renders Kazoot marketing headline', () => {
   render(<App />);
@@ -95,4 +100,34 @@ test('formats reveal timing labels and submitted answer copy', () => {
   expect(getRevealTimingLabel('timer')).toBe('Reveal: timer ends');
   expect(getSubmittedAnswerMessage('all_answered')).toMatch(/other players/i);
   expect(getSubmittedAnswerMessage('timer')).toMatch(/timer/i);
+});
+
+test('stored player sessions are scoped by username and can be cleared', () => {
+  savePlayerSession('ABC12345JK', {
+    playerToken: 'token-1',
+    playerId: 'player-1',
+    username: 'Martin',
+  });
+
+  expect(loadPlayerSession('ABC12345JK', { username: 'Martin' })?.playerToken).toBe('token-1');
+  expect(loadPlayerSession('ABC12345JK', { username: 'Someone Else' })).toBeNull();
+  expect(loadPlayerSession('ABC12345JK', { username: 'Someone Else', allowUsernameMismatch: true })?.username).toBe(
+    'Martin'
+  );
+
+  clearPlayerSession('ABC12345JK');
+  expect(loadPlayerSession('ABC12345JK', { allowUsernameMismatch: true })).toBeNull();
+});
+
+test('ended player sessions are retained briefly then expire', () => {
+  savePlayerSession('ABC12345JL', {
+    playerToken: 'token-2',
+    playerId: 'player-2',
+    username: 'Mobile Player',
+  });
+
+  markPlayerSessionEnded('ABC12345JL');
+  const saved = loadPlayerSession('ABC12345JL', { username: 'Mobile Player' });
+  expect(saved?.gameEndedAt).toEqual(expect.any(Number));
+  expect(saved?.expiresAt).toBeGreaterThan(Date.now());
 });

@@ -115,12 +115,40 @@ class StripeBillingService {
     }
   }
 
+  getConfiguredPriceId(plan) {
+    return plan ? this.config[plan.envKey] : '';
+  }
+
+  async checkoutSessionUsesConfiguredPrice(session, plan) {
+    const expectedPriceId = this.getConfiguredPriceId(plan);
+    if (!expectedPriceId || !this.client) {
+      return false;
+    }
+
+    const lineItems = await this.client.checkout.sessions.listLineItems(session.id, { limit: 10 });
+    return lineItems.data.some((item) => item.price?.id === expectedPriceId);
+  }
+
+  subscriptionUsesConfiguredPrice(subscription, plan) {
+    const expectedPriceId = this.getConfiguredPriceId(plan);
+    if (!expectedPriceId) {
+      return false;
+    }
+
+    return subscription.items?.data?.some((item) => item.price?.id === expectedPriceId) || false;
+  }
+
   async handleCheckoutCompleted(event) {
     const session = event.data.object;
     const userId = session.metadata?.userId;
     const planId = session.metadata?.planId;
     const plan = PRICE_CATALOG[planId];
     if (!userId || !plan) {
+      return;
+    }
+
+    const usesConfiguredPrice = await this.checkoutSessionUsesConfiguredPrice(session, plan);
+    if (!usesConfiguredPrice) {
       return;
     }
 
@@ -165,6 +193,10 @@ class StripeBillingService {
       return;
     }
 
+    if (!this.subscriptionUsesConfiguredPrice(subscription, plan)) {
+      return;
+    }
+
     const inserted = await this.aiUsageService.recordPayment({
       stripeEventId: event.id,
       stripeObjectId: invoice.id,
@@ -205,6 +237,10 @@ class StripeBillingService {
     const planId = subscription.metadata?.planId;
     const plan = PRICE_CATALOG[planId] || { tier: 'free' };
     if (!userId) {
+      return;
+    }
+
+    if (event.type !== 'customer.subscription.deleted' && !this.subscriptionUsesConfiguredPrice(subscription, plan)) {
       return;
     }
 

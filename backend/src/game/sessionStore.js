@@ -1,9 +1,15 @@
 const { randomUUID } = require('crypto');
 
-const SESSION_ID_LENGTH = 8;
+const SESSION_ID_LENGTH = 10;
+const SESSION_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function generateSessionId() {
-  return randomUUID().replace(/-/g, '').slice(0, SESSION_ID_LENGTH).toUpperCase();
+  const bytes = Buffer.from(randomUUID().replace(/-/g, ''), 'hex');
+  let code = '';
+  for (let index = 0; index < SESSION_ID_LENGTH; index += 1) {
+    code += SESSION_ID_ALPHABET[bytes[index] % SESSION_ID_ALPHABET.length];
+  }
+  return code;
 }
 
 function sortLeaderboard(players) {
@@ -21,6 +27,7 @@ function sortLeaderboard(players) {
       username: player.username,
       score: player.score,
       isHost: player.isHost,
+      isTemporaryHost: player.isTemporaryHost,
       connected: player.connected,
     }));
 }
@@ -46,6 +53,7 @@ class GameSession {
     this.updatedAt = this.createdAt;
     this.lastConnectedAt = this.createdAt;
     this.endedAt = null;
+    this.hostOwnerToken = null;
   }
 
   touch() {
@@ -90,14 +98,21 @@ class GameSession {
     const playerId = randomUUID();
     const playerToken = randomUUID();
     const existingHost = this.getHost();
+    const shouldHost = wantsHost ? !existingHost : !existingHost;
+    const hostToken = shouldHost ? this.hostOwnerToken || randomUUID() : null;
     const joinedAt = Date.now();
+    if (shouldHost && !this.hostOwnerToken) {
+      this.hostOwnerToken = hostToken;
+    }
 
     const player = {
       playerId,
       playerToken,
       username: username.trim(),
       score: 0,
-      isHost: wantsHost ? !existingHost : !existingHost,
+      isHost: shouldHost,
+      isTemporaryHost: false,
+      hostToken,
       connected: true,
       socketId,
       joinedAt,
@@ -114,8 +129,19 @@ class GameSession {
     player.connected = true;
     player.socketId = socketId;
     player.username = username?.trim() || player.username;
+    if (player.hostToken && player.hostToken === this.hostOwnerToken) {
+      this.players.forEach((candidate) => {
+        if (candidate.playerId !== player.playerId && candidate.isTemporaryHost) {
+          candidate.isHost = false;
+          candidate.isTemporaryHost = false;
+        }
+      });
+      player.isHost = true;
+      player.isTemporaryHost = false;
+    }
     if (!this.getHost()) {
       player.isHost = true;
+      player.isTemporaryHost = player.hostToken !== this.hostOwnerToken;
     }
     this.lastConnectedAt = Date.now();
     this.touch();
@@ -136,6 +162,7 @@ class GameSession {
       const replacement = this.getConnectedPlayers()[0] || null;
       if (replacement) {
         replacement.isHost = true;
+        replacement.isTemporaryHost = replacement.hostToken !== this.hostOwnerToken;
       }
     }
 
@@ -166,6 +193,7 @@ class GameSession {
         username: player.username,
         score: player.score,
         isHost: player.isHost,
+        isTemporaryHost: player.isTemporaryHost,
         connected: player.connected,
       })),
       leaderboard,
@@ -175,6 +203,7 @@ class GameSession {
             username: currentPlayer.username,
             score: currentPlayer.score,
             isHost: currentPlayer.isHost,
+            isTemporaryHost: currentPlayer.isTemporaryHost,
             connected: currentPlayer.connected,
           }
         : null,

@@ -76,12 +76,14 @@ create table if not exists public.quiz_cache (
 create index if not exists usage_ledger_user_created_idx on public.usage_ledger(user_id, created_at desc);
 create index if not exists quiz_generations_user_created_idx on public.quiz_generations(user_id, created_at desc);
 create index if not exists quiz_generations_user_status_created_idx on public.quiz_generations(user_id, status, created_at desc);
+create index if not exists quiz_generations_user_source_status_created_idx on public.quiz_generations(user_id, source, status, created_at desc);
 create index if not exists quiz_cache_expires_idx on public.quiz_cache(expires_at);
 
 alter table public.quiz_generations
   add column if not exists ip_address text;
 
 create index if not exists quiz_generations_ip_status_created_idx on public.quiz_generations(ip_address, status, created_at desc);
+create index if not exists payments_stripe_object_idx on public.payments(stripe_object_id);
 
 alter table public.profiles enable row level security;
 alter table public.usage_ledger enable row level security;

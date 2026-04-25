@@ -6,6 +6,7 @@ const {
   quizSchema,
   submitAnswerSchema,
 } = require('../validation/schemas');
+const { FixedWindowRateLimiter } = require('../security/rateLimiter');
 
 function buildAnswerStats(players, questionIndex) {
   const stats = [0, 0, 0, 0];
@@ -37,6 +38,10 @@ function formatValidationError(error) {
   return error.message || 'Invalid request';
 }
 
+function getSocketClientIp(socket) {
+  return socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || socket.handshake.address || 'unknown';
+}
+
 class GameService {
   constructor({ io, store, questionService, aiUsageService, config }) {
     this.io = io;
@@ -44,6 +49,18 @@ class GameService {
     this.questionService = questionService;
     this.aiUsageService = aiUsageService;
     this.config = config;
+    this.joinRateLimiter = new FixedWindowRateLimiter({
+      limit: config.joinRateLimitPerMin,
+      windowMs: 60_000,
+    });
+    this.failedJoinRateLimiter = new FixedWindowRateLimiter({
+      limit: config.failedJoinRateLimitPer15Min,
+      windowMs: 15 * 60_000,
+    });
+    this.socketEventRateLimiter = new FixedWindowRateLimiter({
+      limit: config.socketEventRateLimitPer10Sec,
+      windowMs: 10_000,
+    });
   }
 
   log(eventName, details = {}) {
@@ -277,24 +294,42 @@ class GameService {
 
   joinSession(socket, rawPayload) {
     const payload = joinGameSchema.parse(rawPayload);
+    const clientIp = getSocketClientIp(socket);
+    const joinLimit = this.joinRateLimiter.consume(`${clientIp}:${payload.sessionId}`);
+    if (!joinLimit.allowed) {
+      throw new Error('Too many join attempts. Please wait a moment and try again.');
+    }
+
     const session = this.store.getSession(payload.sessionId);
 
     if (!session) {
+      const failedLimit = this.failedJoinRateLimiter.consume(`missing:${clientIp}`);
       this.log('join_session_missing', {
         sessionId: payload.sessionId,
         socketId: socket.id,
         username: payload.username,
         knownSessions: this.store.getKnownSessionIds(),
       });
+      if (!failedLimit.allowed) {
+        throw new Error('Unable to join this room. Check the invite link or room code.');
+      }
       throw new Error('Game session not found');
     }
 
     let player = null;
     let reconnected = false;
+    const hostBeforeJoin = session.getHost();
 
     if (payload.playerToken) {
       player = session.getPlayerByToken(payload.playerToken);
       if (player) {
+        if (
+          player.username.trim().toLowerCase() !== payload.username.trim().toLowerCase() &&
+          session.gameState !== 'waiting'
+        ) {
+          throw new Error('Saved player token does not match this player name');
+        }
+
         if (session.hasUsernameConflict(payload.username, player.playerId)) {
           throw new Error('That name is already in use');
         }
@@ -338,23 +373,34 @@ class GameService {
     socket.data.sessionId = session.id;
     socket.data.playerId = player.playerId;
     socket.data.playerToken = player.playerToken;
+    socket.data.hostToken = player.hostToken || null;
 
     const joinedPayload = {
       ...session.toSessionSummary(player.playerId),
       isAdmin: player.isHost,
       playerId: player.playerId,
       playerToken: player.playerToken,
+      hostToken: player.isHost ? player.hostToken : null,
       reconnected,
     };
 
     socket.emit('joined-game', joinedPayload);
     this.emitSessionUpdate(session);
     this.emitPhaseSnapshot(session, player);
+    const hostAfterJoin = session.getHost();
+    if (hostAfterJoin && hostBeforeJoin?.playerId !== hostAfterJoin.playerId) {
+      this.io.to(session.id).emit('admin-changed', {
+        newAdminId: hostAfterJoin.playerId,
+        newAdminUsername: hostAfterJoin.username,
+        isTemporaryHost: hostAfterJoin.isTemporaryHost,
+      });
+    }
     this.log('join_session_success', {
       sessionId: session.id,
       playerId: player.playerId,
       username: player.username,
       reconnected,
+      isTemporaryHost: player.isTemporaryHost,
       gameState: session.gameState,
       connectedPlayerCount: session.getConnectedPlayers().length,
     });
@@ -601,6 +647,11 @@ class GameService {
   wrapSocketHandler(socket, handler) {
     return async (payload = {}) => {
       try {
+        const clientIp = getSocketClientIp(socket);
+        const eventLimit = this.socketEventRateLimiter.consume(`${clientIp}:${socket.id}`);
+        if (!eventLimit.allowed) {
+          throw new Error('Too many socket actions. Please slow down.');
+        }
         await handler(payload);
       } catch (error) {
         socket.emit('error', { message: formatValidationError(error) });
