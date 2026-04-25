@@ -14,9 +14,12 @@ import {
   Button,
   ButtonRow,
   Card,
+  ChoiceCard,
   CenteredContent,
+  Cluster,
   EmptyState,
   Eyebrow,
+  FormGrid,
   GlassPanel,
   Grid,
   HeaderRow,
@@ -25,9 +28,16 @@ import {
   Input,
   Label,
   PageShell,
+  PanelBody,
+  PanelTitleHeader,
   Pill,
+  AnswerButton,
+  AnswerLetter,
+  AnswerText,
+  ResultOptionCard,
   SectionTitle,
   Select,
+  Stack,
   StatChip,
   Subtitle,
   Title,
@@ -189,62 +199,61 @@ function MarketingHome() {
   return (
     <Shell>
       <HeroCard initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
-        <Eyebrow>Fast, live, Railway-ready quiz battles</Eyebrow>
-        <div style={{ marginTop: 20 }}>
+        <PanelTitleHeader $hero>
           <Title>Kazoot brings reliable multiplayer quiz nights back to life.</Title>
-          <Subtitle>
-            Create a game in seconds, share a direct join link, and keep every round synchronized
-            with server-authoritative timing, live scoring, and GPT-5.4 generated question sets.
-          </Subtitle>
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 10,
-            marginTop: 18,
-          }}
-        >
-          <StatChip>GPT-5.4 question sets</StatChip>
-          <StatChip>Single-room host controls</StatChip>
-          <StatChip>Realtime synchronized rounds</StatChip>
-        </div>
-        <ButtonRow style={{ marginTop: 28 }}>
-          <Button as={Link} to="/create">
-            Host a game
-          </Button>
-          <Button as={Link} to="/join" variant="secondary">
-            Join by code
-          </Button>
-        </ButtonRow>
-        <Grid gap="18px" $mobileColumns="1fr" style={{ marginTop: 34 }}>
-          {[
-            ['Authoritative realtime', 'Server-timed rounds prevent drift, duplicate scoring, and stale timer bugs.'],
-            ['Rejoin without chaos', 'Players reconnect with stored tokens instead of losing their seat mid-game.'],
-            ['Better AI prompts', 'GPT-5.4 uses structured output plus duplicate filtering to keep sets fresh.'],
-          ].map(([headline, copy], index) => (
-            <Card key={headline} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <div style={{ color: theme.colors.gold, fontSize: '0.82rem', marginBottom: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                0{index + 1}
-              </div>
-              <SectionTitle style={{ fontSize: '1.15rem', marginBottom: 10 }}>{headline}</SectionTitle>
-              <Subtitle>{copy}</Subtitle>
-            </Card>
-          ))}
-        </Grid>
-        <Grid
-          gap="16px"
-          columns="repeat(auto-fit, minmax(220px, 1fr))"
-          $mobileColumns="1fr"
-          style={{ marginTop: 18 }}
-        >
-          {stats.map(([headline, copy]) => (
-            <Card key={headline} initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ background: theme.gradients.success }}>
-              <SectionTitle style={{ fontSize: '1.02rem', marginBottom: 8 }}>{headline}</SectionTitle>
-              <Subtitle>{copy}</Subtitle>
-            </Card>
-          ))}
-        </Grid>
+        </PanelTitleHeader>
+        <PanelBody>
+          <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <Stack gap="18px">
+              <Eyebrow>Fast, live, Railway-ready quiz battles</Eyebrow>
+              <Subtitle>
+                Create a game in seconds, share a direct join link, and keep every round synchronized
+                with server-authoritative timing, live scoring, and GPT-5.4 generated question sets.
+              </Subtitle>
+              <Cluster>
+                <StatChip>GPT-5.4 question sets</StatChip>
+                <StatChip>Single-room host controls</StatChip>
+                <StatChip>Realtime synchronized rounds</StatChip>
+              </Cluster>
+              <ButtonRow>
+                <Button as={Link} to="/create">
+                  Host a game
+                </Button>
+                <Button as={Link} to="/join" variant="secondary">
+                  Join by code
+                </Button>
+              </ButtonRow>
+            </Stack>
+          </Card>
+          <Grid gap="18px" $mobileColumns="1fr" style={{ marginTop: 18 }}>
+            {[
+              ['Authoritative realtime', 'Server-timed rounds prevent drift, duplicate scoring, and stale timer bugs.'],
+              ['Rejoin without chaos', 'Players reconnect with stored tokens instead of losing their seat mid-game.'],
+              ['Better AI prompts', 'GPT-5.4 uses structured output plus duplicate filtering to keep sets fresh.'],
+            ].map(([headline, copy], index) => (
+              <Card key={headline} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div style={{ color: theme.colors.gold, fontSize: '0.82rem', marginBottom: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  0{index + 1}
+                </div>
+                <SectionTitle style={{ fontSize: '1.15rem', marginBottom: 10 }}>{headline}</SectionTitle>
+                <Subtitle>{copy}</Subtitle>
+              </Card>
+            ))}
+          </Grid>
+          <Grid
+            gap="16px"
+            columns="repeat(auto-fit, minmax(220px, 1fr))"
+            $mobileColumns="1fr"
+            style={{ marginTop: 18 }}
+          >
+            {stats.map(([headline, copy]) => (
+              <Card key={headline} initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ background: theme.gradients.success }}>
+                <SectionTitle style={{ fontSize: '1.02rem', marginBottom: 8 }}>{headline}</SectionTitle>
+                <Subtitle>{copy}</Subtitle>
+              </Card>
+            ))}
+          </Grid>
+        </PanelBody>
       </HeroCard>
     </Shell>
   );
@@ -327,48 +336,49 @@ function CreatePage() {
   if (shouldShowHostGate) {
     return (
       <Shell>
-        <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ padding: 32 }}>
-          <HeaderRow>
-            <div>
+        <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
+          <PanelTitleHeader>
+            <SectionTitle>Host with AI questions or start a demo room.</SectionTitle>
+          </PanelTitleHeader>
+          <PanelBody>
+            <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
               <Eyebrow>Choose how you want to host</Eyebrow>
-              <div style={{ marginTop: 16 }}>
-                <SectionTitle>Host with AI questions or start a demo room.</SectionTitle>
-                <Subtitle>
-                  Sign in with Google to generate unique GPT-5.4 games and get 3 free AI games per day.
-                  You can also continue without login and host with built-in demo questions.
-                </Subtitle>
-              </div>
-            </div>
-            <Button as={Link} to="/" variant="ghost" compact>
-              Back home
-            </Button>
-          </HeaderRow>
-
-          {authError ? <Banner $tone="danger">{authError}</Banner> : null}
-
-          <Grid gap="18px" columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
-            <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ background: theme.gradients.success }}>
-              <Eyebrow>Recommended for hosts</Eyebrow>
-              <SectionTitle style={{ fontSize: '1.35rem', marginTop: 14 }}>Generate unique AI games</SectionTitle>
-              <Subtitle style={{ marginTop: 10 }}>
-                Use Google login to unlock GPT-5.4 question generation, track your credits, and get 3 free
-                AI games every day before paid credits are used.
+              <Subtitle style={{ marginTop: 12 }}>
+                Sign in with Google to generate unique GPT-5.4 games and get 3 free AI games per day.
+                You can also continue without login and host with built-in demo questions.
               </Subtitle>
               <ButtonRow style={{ marginTop: 18 }}>
-                <Button type="button" disabled={!isConfigured} onClick={signIn} whileTap={{ scale: 0.98 }}>
-                  Continue with Google
+                <Button as={Link} to="/" variant="ghost" compact>
+                  Back home
                 </Button>
               </ButtonRow>
             </Card>
 
-            <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <Eyebrow>No login needed</Eyebrow>
-              <SectionTitle style={{ fontSize: '1.35rem', marginTop: 14 }}>Host a demo game</SectionTitle>
-              <Subtitle style={{ marginTop: 10 }}>
-                Start quickly with built-in demo questions. This is great for testing the room flow, but it
-                will not generate fresh AI question sets.
-              </Subtitle>
-              <ButtonRow style={{ marginTop: 18 }}>
+          {authError ? <Banner $tone="danger">{authError}</Banner> : null}
+
+          <Grid gap="18px" columns="repeat(auto-fit, minmax(280px, 1fr))" $mobileColumns="1fr">
+            <ChoiceCard $featured initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <Stack gap="14px">
+                <Eyebrow>Recommended for hosts</Eyebrow>
+                <SectionTitle style={{ fontSize: '1.35rem' }}>Generate unique AI games</SectionTitle>
+                <Subtitle>
+                  Use Google login to unlock GPT-5.4 question generation, track your credits, and get 3 free
+                  AI games every day before paid credits are used.
+                </Subtitle>
+                <Button type="button" disabled={!isConfigured} onClick={signIn} whileTap={{ scale: 0.98 }}>
+                  Continue with Google
+                </Button>
+              </Stack>
+            </ChoiceCard>
+
+            <ChoiceCard initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <Stack gap="14px">
+                <Eyebrow>No login needed</Eyebrow>
+                <SectionTitle style={{ fontSize: '1.35rem' }}>Host a demo game</SectionTitle>
+                <Subtitle>
+                  Start quickly with built-in demo questions. This is great for testing the room flow, but it
+                  will not generate fresh AI question sets.
+                </Subtitle>
                 <Button
                   type="button"
                   variant="secondary"
@@ -377,9 +387,10 @@ function CreatePage() {
                 >
                   Continue with demo game
                 </Button>
-              </ButtonRow>
-            </Card>
+              </Stack>
+            </ChoiceCard>
           </Grid>
+          </PanelBody>
         </GlassPanel>
       </Shell>
     );
@@ -387,22 +398,23 @@ function CreatePage() {
 
   return (
     <Shell>
-      <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ padding: 32 }}>
-        <HeaderRow>
-          <div>
+      <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
+        <PanelTitleHeader>
+          <SectionTitle>Create a new session</SectionTitle>
+        </PanelTitleHeader>
+        <PanelBody>
+        <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
             <Eyebrow>Host a polished game room</Eyebrow>
-            <div style={{ marginTop: 16 }}>
-              <SectionTitle>Create a new session</SectionTitle>
-              <Subtitle>
-                Pick a topic, choose a language, and Kazoot will prepare a 10-question set with
-                stable realtime multiplayer.
-              </Subtitle>
-            </div>
-          </div>
-          <Button as={Link} to="/" variant="ghost" compact>
-            Back home
-          </Button>
-        </HeaderRow>
+            <Subtitle style={{ marginTop: 12 }}>
+              Pick a topic, choose a language, and Kazoot will prepare a 10-question set with
+              stable realtime multiplayer.
+            </Subtitle>
+          <ButtonRow style={{ marginTop: 18 }}>
+            <Button as={Link} to="/" variant="ghost" compact>
+              Back home
+            </Button>
+          </ButtonRow>
+        </Card>
 
         {error ? <Banner $tone="danger">{error}</Banner> : null}
         {authError ? <Banner $tone="danger">{authError}</Banner> : null}
@@ -443,45 +455,47 @@ function CreatePage() {
             </HeaderRow>
           </Card>
 
-          <Grid columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
-            <div>
-              <Label htmlFor="host-name">Host name</Label>
+          <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <FormGrid columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
+              <div>
+                <Label htmlFor="host-name">Host name</Label>
+                <Input
+                  id="host-name"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="Martin"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="language">Question language</Label>
+                <Select
+                  id="language"
+                  value={language}
+                  onChange={(event) => setLanguage(event.target.value)}
+                >
+                  <option value="English">English</option>
+                  <option value="Estonian">Eesti keel</option>
+                </Select>
+                <HelperText>
+                  {hasOpenAI
+                    ? 'GPT-5.4 is available for live question generation.'
+                    : 'OpenAI is unavailable, so Kazoot will fall back to demo question banks.'}
+                </HelperText>
+              </div>
+            </FormGrid>
+
+            <div style={{ marginTop: 18 }}>
+              <Label htmlFor="topic">Topic</Label>
               <Input
-                id="host-name"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="Martin"
+                id="topic"
+                value={topic}
+                onChange={(event) => setTopic(event.target.value)}
+                placeholder="Indie games, Formula 1, space history..."
                 required
               />
             </div>
-            <div>
-              <Label htmlFor="language">Question language</Label>
-              <Select
-                id="language"
-                value={language}
-                onChange={(event) => setLanguage(event.target.value)}
-              >
-                <option value="English">English</option>
-                <option value="Estonian">Eesti keel</option>
-              </Select>
-              <HelperText>
-                {hasOpenAI
-                  ? 'GPT-5.4 is available for live question generation.'
-                  : 'OpenAI is unavailable, so Kazoot will fall back to demo question banks.'}
-              </HelperText>
-            </div>
-          </Grid>
-
-          <div style={{ marginTop: 18 }}>
-            <Label htmlFor="topic">Topic</Label>
-            <Input
-              id="topic"
-              value={topic}
-              onChange={(event) => setTopic(event.target.value)}
-              placeholder="Indie games, Formula 1, space history..."
-              required
-            />
-          </div>
+          </Card>
 
           <Card
             initial={{ opacity: 0 }}
@@ -496,7 +510,7 @@ function CreatePage() {
               Choose how long players get to answer each question. Shorter timers feel sharper; 20 seconds is the
               most forgiving default.
             </HelperText>
-            <ButtonRow style={{ marginTop: 14 }}>
+            <Cluster style={{ marginTop: 14 }}>
               {timerOptions.map(([value, label]) => (
                 <Button
                   key={value}
@@ -513,7 +527,7 @@ function CreatePage() {
                   {label}
                 </Button>
               ))}
-            </ButtonRow>
+            </Cluster>
           </Card>
 
           <Card
@@ -576,7 +590,7 @@ function CreatePage() {
             </Grid>
           ) : null}
 
-          <ButtonRow style={{ marginTop: 28 }}>
+          <Cluster style={{ marginTop: 28 }}>
             <Button
               type="submit"
               disabled={!username.trim() || !topic.trim() || isLoading || isSignedInAiBlocked}
@@ -589,8 +603,9 @@ function CreatePage() {
                 View plans
               </Button>
             ) : null}
-          </ButtonRow>
+          </Cluster>
         </form>
+        </PanelBody>
       </GlassPanel>
     </Shell>
   );
@@ -616,25 +631,27 @@ function JoinPage() {
 
   return (
     <Shell>
-      <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ padding: 32 }}>
-        <HeaderRow>
-          <div>
+      <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
+        <PanelTitleHeader>
+          <SectionTitle>Join a live session</SectionTitle>
+        </PanelTitleHeader>
+        <PanelBody>
+        <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
             <Eyebrow>Jump straight into a room</Eyebrow>
-            <div style={{ marginTop: 16 }}>
-              <SectionTitle>Join a live session</SectionTitle>
-              <Subtitle>
-                Enter your name and the room code, or open a direct session link from your
-                host to reconnect automatically.
-              </Subtitle>
-            </div>
-          </div>
-          <Button as={Link} to="/" variant="ghost" compact>
-            Back home
-          </Button>
-        </HeaderRow>
+            <Subtitle style={{ marginTop: 12 }}>
+              Enter your name and the room code, or open a direct session link from your
+              host to reconnect automatically.
+            </Subtitle>
+          <ButtonRow style={{ marginTop: 18 }}>
+            <Button as={Link} to="/" variant="ghost" compact>
+              Back home
+            </Button>
+          </ButtonRow>
+        </Card>
 
+        <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
         <form onSubmit={handleSubmit}>
-          <Grid columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
+          <FormGrid columns="repeat(auto-fit, minmax(260px, 1fr))" $mobileColumns="1fr">
             <div>
               <Label htmlFor="join-name">Player name</Label>
               <Input
@@ -657,9 +674,9 @@ function JoinPage() {
                 required
               />
             </div>
-          </Grid>
+          </FormGrid>
 
-          <ButtonRow style={{ marginTop: 28 }}>
+          <Cluster style={{ marginTop: 28 }}>
             <Button
               type="submit"
               disabled={!username.trim() || ![6, 8].includes(sessionId.trim().length)}
@@ -667,8 +684,10 @@ function JoinPage() {
             >
               Join session
             </Button>
-          </ButtonRow>
+          </Cluster>
         </form>
+        </Card>
+        </PanelBody>
       </GlassPanel>
     </Shell>
   );
@@ -953,17 +972,13 @@ function QuestionView({ question, revealTiming, onSubmitAnswer, onResyncSession,
               ? 'Sending...'
               : null;
           return (
-            <Button
+            <AnswerButton
               key={`${choice}-${index}`}
               type="button"
               disabled={locked}
               whileTap={{ scale: locked ? 1 : 0.98 }}
               onClick={() => onSubmitAnswer(index)}
               style={{
-                justifyContent: 'flex-start',
-                borderRadius: theme.radii.md,
-                padding: '16px',
-                minHeight: 76,
                 background: isChosen ? `${options[index][1]}` : `${options[index][1]}bf`,
                 fontSize: '0.96rem',
                 border: isChosen ? '2px solid rgba(255, 255, 255, 0.55)' : '1px solid rgba(255, 255, 255, 0.08)',
@@ -972,8 +987,8 @@ function QuestionView({ question, revealTiming, onSubmitAnswer, onResyncSession,
                 filter: shouldDimOption ? 'saturate(0.65) brightness(0.75)' : 'none',
               }}
             >
-              <span style={{ marginRight: 10, opacity: 0.9, fontWeight: 800 }}>{options[index][0]}</span>
-              <span style={{ textAlign: 'left', flex: 1 }}>{choice}</span>
+              <AnswerLetter>{options[index][0]}</AnswerLetter>
+              <AnswerText>{choice}</AnswerText>
               {selectionLabel ? (
                 <span
                   style={{
@@ -994,7 +1009,7 @@ function QuestionView({ question, revealTiming, onSubmitAnswer, onResyncSession,
                   {selectionLabel}
                 </span>
               ) : null}
-            </Button>
+            </AnswerButton>
           );
         })}
       </Grid>
@@ -1047,10 +1062,9 @@ function ResultsView({ results, session, onNextQuestion }) {
                   ? 'Your pick'
                   : `${count} picks`;
             return (
-              <Card
+              <ResultOptionCard
                 key={index}
                 style={{
-                  padding: 18,
                   borderColor: isCorrect
                     ? 'rgba(34, 197, 94, 0.4)'
                     : playerChoice
@@ -1058,19 +1072,19 @@ function ResultsView({ results, session, onNextQuestion }) {
                       : undefined,
                 }}
               >
-                <HeaderRow style={{ marginBottom: 10 }}>
-                  <strong>
+                <Stack gap="10px">
+                  <strong style={{ lineHeight: 1.35 }}>
                     {String.fromCharCode(65 + index)}. {results.allChoices[index]}
                   </strong>
                   <Pill $tone={optionTone}>
                     {optionLabel}
                   </Pill>
-                </HeaderRow>
-                <Subtitle>
-                  {totalAnswers ? Math.round((count / totalAnswers) * 100) : 0}% of players selected this
-                  option.
-                </Subtitle>
-              </Card>
+                  <Subtitle>
+                    {totalAnswers ? Math.round((count / totalAnswers) * 100) : 0}% of players selected this
+                    option.
+                  </Subtitle>
+                </Stack>
+              </ResultOptionCard>
             );
           })}
         </Grid>
@@ -1169,35 +1183,43 @@ function JoinSessionCard({ sessionId, defaultUsername, onJoin }) {
   const [username, setUsername] = useState(defaultUsername || '');
 
   return (
-    <EmptyState initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-      <Eyebrow>Player invite</Eyebrow>
-      <SectionTitle>Join room {sessionId}</SectionTitle>
-      <Subtitle style={{ marginTop: 8 }}>
-        Your host has already created this game. Enter the name you want shown on the scoreboard,
-        then join the lobby.
-      </Subtitle>
-      <form
-        style={{ width: '100%', maxWidth: 420, margin: '24px auto 0', textAlign: 'left' }}
-        onSubmit={(event) => {
-          event.preventDefault();
-          onJoin(username, true);
-        }}
-      >
-        <Label htmlFor="session-player-name">Player name</Label>
-        <Input
-          id="session-player-name"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          placeholder="Player name"
-          required
-        />
-        <ButtonRow style={{ justifyContent: 'center', marginTop: 18 }}>
-          <Button type="submit" disabled={!username.trim()} whileTap={{ scale: 0.98 }}>
-            Join room
-          </Button>
-        </ButtonRow>
-      </form>
-    </EmptyState>
+    <GlassPanel initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+      <PanelTitleHeader>
+        <SectionTitle>Join room {sessionId}</SectionTitle>
+      </PanelTitleHeader>
+      <PanelBody>
+        <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <Stack style={{ alignItems: 'center', textAlign: 'center' }}>
+            <Eyebrow>Player invite</Eyebrow>
+            <Subtitle>
+              Your host has already created this game. Enter the name you want shown on the scoreboard,
+              then join the lobby.
+            </Subtitle>
+          </Stack>
+          <form
+            style={{ width: 'min(420px, 100%)', margin: '24px auto 0', textAlign: 'left' }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              onJoin(username, true);
+            }}
+          >
+            <Label htmlFor="session-player-name">Player name</Label>
+            <Input
+              id="session-player-name"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="Player name"
+              required
+            />
+            <Cluster justify="center" style={{ marginTop: 18 }}>
+              <Button type="submit" disabled={!username.trim()} whileTap={{ scale: 0.98 }}>
+                Join room
+              </Button>
+            </Cluster>
+          </form>
+        </Card>
+      </PanelBody>
+    </GlassPanel>
   );
 }
 
@@ -1377,8 +1399,15 @@ function AppRoutes() {
           <Suspense
             fallback={
               <Shell>
-                <GlassPanel style={{ padding: 32 }}>
-                  <Subtitle>Loading account...</Subtitle>
+                <GlassPanel>
+                  <PanelTitleHeader>
+                    <SectionTitle>Loading account</SectionTitle>
+                  </PanelTitleHeader>
+                  <PanelBody>
+                    <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                      <Subtitle>Preparing your account and credit details...</Subtitle>
+                    </Card>
+                  </PanelBody>
                 </GlassPanel>
               </Shell>
             }

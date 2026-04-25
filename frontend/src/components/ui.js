@@ -18,32 +18,104 @@ export const CenteredContent = styled.div`
 export const GlassPanel = styled(motion.section)`
   position: relative;
   overflow: hidden;
+  isolation: isolate;
   background: ${({ theme }) => theme.gradients.card};
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: ${({ theme }) => theme.radii.lg};
   box-shadow: ${({ theme }) => theme.shadows.glow};
   backdrop-filter: blur(18px);
+  color: ${({ theme }) => theme.colors.text};
 
   &::before {
     content: '';
     position: absolute;
     inset: 0 0 auto 0;
-    height: 160px;
-    background: ${({ theme }) => theme.gradients.accent};
-    opacity: 0.45;
+    height: var(--panel-decor-height, 0);
+    z-index: 0;
+    background: linear-gradient(
+      135deg,
+      rgba(56, 189, 248, 0.28) 0%,
+      rgba(124, 58, 237, 0.24) 58%,
+      rgba(124, 58, 237, 0.08) 82%,
+      transparent 100%
+    );
+    opacity: 0.52;
     pointer-events: none;
+  }
+
+  & > * {
+    position: relative;
+    z-index: 1;
+  }
+`;
+
+export const PanelBody = styled.div`
+  padding: ${({ $compact = false }) => ($compact ? '28px' : '32px')};
+  background: linear-gradient(180deg, rgba(8, 13, 27, 0.88), rgba(8, 13, 27, 0.96));
+
+  @media (max-width: 768px) {
+    padding: ${({ $compact = false }) => ($compact ? '18px' : '22px')};
+  }
+`;
+
+export const PanelTitleHeader = styled.header`
+  padding: ${({ $hero = false }) => ($hero ? '42px 40px 36px' : '32px 32px 30px')};
+  background:
+    radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 32%),
+    linear-gradient(
+      135deg,
+      rgba(56, 189, 248, 0.22) 0%,
+      rgba(124, 58, 237, 0.22) 56%,
+      rgba(15, 23, 42, 0.12) 100%
+    );
+  border-bottom: 1px solid ${({ theme }) => theme.colors.border};
+
+  h1,
+  h2 {
+    margin: 0;
+    max-width: ${({ $hero = false }) => ($hero ? '980px' : '820px')};
+    line-height: ${({ $hero = false }) => ($hero ? 0.98 : 1.05)};
+  }
+
+  @media (max-width: 768px) {
+    padding: ${({ $hero = false }) => ($hero ? '28px 22px 24px' : '24px 22px 22px')};
+  }
+`;
+
+export const PanelHeader = styled.header`
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 18px;
+  margin-bottom: ${({ $compact = false }) => ($compact ? '22px' : '28px')};
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+export const HeaderCopy = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: ${({ $narrow = false }) => ($narrow ? '760px' : '880px')};
+`;
+
+export const HeaderActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  @media (max-width: 768px) {
+    justify-content: flex-start;
   }
 `;
 
 export const HeroCard = styled(GlassPanel)`
-  padding: 40px;
   background:
     radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 28%),
     ${({ theme }) => theme.gradients.cardHighlight};
-
-  @media (max-width: 768px) {
-    padding: 24px;
-  }
 `;
 
 export const HeaderRow = styled.div`
@@ -64,6 +136,8 @@ export const Eyebrow = styled.div`
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  width: fit-content;
+  max-width: 100%;
   padding: 9px 15px;
   border-radius: ${({ theme }) => theme.radii.pill};
   border: 1px solid rgba(139, 92, 246, 0.32);
@@ -109,6 +183,29 @@ export const Grid = styled.div`
   @media (max-width: 768px) {
     grid-template-columns: ${({ $mobileColumns = '1fr' }) => $mobileColumns};
   }
+`;
+
+export const Stack = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${({ gap = '16px' }) => gap};
+`;
+
+export const Cluster = styled.div`
+  display: flex;
+  align-items: ${({ align = 'center' }) => align};
+  justify-content: ${({ justify = 'flex-start' }) => justify};
+  gap: ${({ gap = '12px' }) => gap};
+  flex-wrap: wrap;
+
+  @media (max-width: 768px) {
+    align-items: stretch;
+    width: 100%;
+  }
+`;
+
+export const FormGrid = styled(Grid)`
+  align-items: start;
 `;
 
 const buttonVariants = {
@@ -184,6 +281,40 @@ export const Button = styled(motion.button).withConfig({
   }
 `;
 
+export const AnswerButton = styled(Button)`
+  justify-content: flex-start;
+  align-items: stretch;
+  min-height: 84px;
+  padding: 16px;
+  border-radius: ${({ theme }) => theme.radii.md};
+  text-align: left;
+  white-space: normal;
+  word-break: break-word;
+
+  @media (max-width: 768px) {
+    min-height: 68px;
+  }
+`;
+
+export const AnswerLetter = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin-right: 12px;
+  border-radius: ${({ theme }) => theme.radii.pill};
+  background: rgba(255, 255, 255, 0.16);
+  font-weight: 900;
+`;
+
+export const AnswerText = styled.span`
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+`;
+
 export const Card = styled(motion.article)`
   position: relative;
   padding: 22px;
@@ -202,6 +333,31 @@ export const Card = styled(motion.article)`
   @media (max-width: 768px) {
     padding: 16px;
   }
+`;
+
+export const ChoiceCard = styled(Card).withConfig({
+  shouldForwardProp: (prop) => !['$featured'].includes(prop),
+})`
+  min-height: 100%;
+  background: ${({ $featured, theme }) => ($featured ? theme.gradients.success : theme.colors.surfaceMuted)};
+  border-color: ${({ $featured }) => ($featured ? 'rgba(34, 197, 94, 0.28)' : 'rgba(148, 163, 184, 0.16)')};
+
+  ${Stack} {
+    height: 100%;
+  }
+
+  ${Button} {
+    margin-top: auto;
+  }
+
+  @media (max-width: 768px) {
+    min-height: auto;
+  }
+`;
+
+export const ResultOptionCard = styled(Card)`
+  padding: 18px;
+  overflow-wrap: anywhere;
 `;
 
 export const Label = styled.label`

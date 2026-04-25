@@ -13,7 +13,7 @@ const Bar = styled.header`
   padding: ${({ $dense = false }) => ($dense ? '10px 12px' : '12px 14px')};
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: ${({ theme }) => theme.radii.lg};
-  background: rgba(9, 15, 30, 0.72);
+  background: ${({ $mode }) => ($mode === 'join' ? 'rgba(9, 15, 30, 0.5)' : 'rgba(9, 15, 30, 0.72)')};
   box-shadow: ${({ theme }) => theme.shadows.card};
   backdrop-filter: blur(18px);
 
@@ -21,6 +21,10 @@ const Bar = styled.header`
     align-items: stretch;
     flex-direction: column;
     border-radius: ${({ theme }) => theme.radii.md};
+
+    .account-secondary-action {
+      display: none;
+    }
   }
 `;
 
@@ -40,7 +44,23 @@ const AccountCluster = styled.div`
   flex-wrap: wrap;
 
   @media (max-width: 768px) {
-    justify-content: flex-start;
+    justify-content: space-between;
+  }
+`;
+
+const DesktopOnly = styled.span`
+  display: inline-flex;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
+`;
+
+const MobileOnly = styled.span`
+  display: none;
+
+  @media (max-width: 768px) {
+    display: inline-flex;
   }
 `;
 
@@ -55,6 +75,11 @@ const UserPill = styled(Link)`
   background: rgba(148, 163, 184, 0.09);
   color: ${({ theme }) => theme.colors.textMuted};
   text-decoration: none;
+
+  @media (max-width: 768px) {
+    max-width: 100%;
+    flex: 1;
+  }
 `;
 
 const Avatar = styled.div`
@@ -118,7 +143,7 @@ export function AccountStatusBar({ dense = false, mode = 'default' }) {
   const isJoinMode = mode === 'join';
 
   return (
-    <Bar $dense={dense}>
+    <Bar $dense={dense} $mode={mode}>
       <BrandLink to="/">Kazoot</BrandLink>
 
       <AccountCluster>
@@ -141,9 +166,10 @@ export function AccountStatusBar({ dense = false, mode = 'default' }) {
               <UserText>{getDisplayName(user)}</UserText>
             </UserPill>
             <Button as={Link} to="/account" variant="secondary" compact>
-              Upgrade
+              <DesktopOnly>Upgrade</DesktopOnly>
+              <MobileOnly>Account</MobileOnly>
             </Button>
-            <Button type="button" variant="ghost" compact onClick={signOut}>
+            <Button className="account-secondary-action" type="button" variant="ghost" compact onClick={signOut}>
               Sign out
             </Button>
           </>

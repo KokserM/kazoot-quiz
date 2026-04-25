@@ -9,13 +9,16 @@ import {
   ButtonRow,
   Card,
   CenteredContent,
+  Cluster,
   Eyebrow,
   GlassPanel,
   Grid,
-  HeaderRow,
   HelperText,
   PageShell,
+  PanelBody,
+  PanelTitleHeader,
   SectionTitle,
+  Stack,
   StatChip,
   Subtitle,
 } from '../components/ui';
@@ -35,24 +38,28 @@ const PLAN_DETAILS = {
   plus_monthly: {
     title: 'Plus monthly',
     badge: 'Best for regular hosts',
+    family: 'Subscription',
     description: 'A predictable monthly credit refill for weekly quiz nights and small communities.',
     cta: 'Subscribe to Plus',
   },
   pro_monthly: {
     title: 'Pro monthly',
     badge: 'Best value',
+    family: 'Subscription',
     description: 'More credits for frequent hosts, classrooms, teams, and bigger recurring events.',
     cta: 'Subscribe to Pro',
   },
   credits_100: {
     title: '100 credit pack',
     badge: 'One-time top-up',
+    family: 'Credit pack',
     description: 'Add credits without a subscription. Good when you only need an occasional boost.',
     cta: 'Buy 100 credits',
   },
   credits_250: {
     title: '250 credit pack',
     badge: 'Flexible pack',
+    family: 'Credit pack',
     description: 'A larger one-time top-up for busier periods without committing monthly.',
     cta: 'Buy 250 credits',
   },
@@ -62,6 +69,7 @@ function getPlanDetails(plan) {
   return PLAN_DETAILS[plan.id] || {
     title: `${plan.credits} credit plan`,
     badge: plan.mode === 'subscription' ? 'Subscription' : 'Credit pack',
+    family: plan.mode === 'subscription' ? 'Subscription' : 'Credit pack',
     description: `${plan.credits} AI game credits ${plan.mode === 'subscription' ? 'included each billing cycle.' : 'added after payment.'}`,
     cta: 'Choose plan',
   };
@@ -97,22 +105,23 @@ export default function AccountPage() {
 
   return (
     <Shell>
-      <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ padding: 32 }}>
-        <HeaderRow>
-          <div>
+      <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
+        <PanelTitleHeader>
+          <SectionTitle>Control GPT-5.4 spend</SectionTitle>
+        </PanelTitleHeader>
+        <PanelBody>
+        <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
             <Eyebrow>Account & AI credits</Eyebrow>
-            <div style={{ marginTop: 16 }}>
-              <SectionTitle>Control GPT-5.4 spend</SectionTitle>
-              <Subtitle>
-                AI question generation is metered. You get 3 free AI games per day, then paid credits
-                keep generation predictable.
-              </Subtitle>
-            </div>
-          </div>
-          <Button as={Link} to="/create" variant="ghost" compact>
-            Back to create
-          </Button>
-        </HeaderRow>
+            <Subtitle style={{ marginTop: 12 }}>
+              AI question generation is metered. You get 3 free AI games per day, then paid credits
+              keep generation predictable.
+            </Subtitle>
+          <ButtonRow style={{ marginTop: 18 }}>
+            <Button as={Link} to="/create" variant="ghost" compact>
+              Back to create
+            </Button>
+          </ButtonRow>
+        </Card>
 
         {error ? <Banner $tone="danger">{error}</Banner> : null}
         {authError ? <Banner $tone="danger">{authError}</Banner> : null}
@@ -164,37 +173,47 @@ export default function AccountPage() {
               </ButtonRow>
             </Card>
 
-            <Grid gap="16px" $mobileColumns="1fr" style={{ marginTop: 24 }}>
+            <Grid gap="16px" columns="repeat(auto-fit, minmax(240px, 1fr))" $mobileColumns="1fr" style={{ marginTop: 24 }}>
               {plans.map((plan) => {
                 const details = getPlanDetails(plan);
+                const isSubscription = plan.mode === 'subscription';
 
                 return (
-                <Card key={plan.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <Eyebrow>{details.badge}</Eyebrow>
-                  <SectionTitle style={{ fontSize: '1.2rem' }}>
-                    {details.title}
-                  </SectionTitle>
-                  <Subtitle style={{ marginTop: 8 }}>{details.description}</Subtitle>
-                  <HelperText>
-                    {plan.credits} AI game credits {plan.mode === 'subscription' ? 'included each billing cycle.' : 'added after payment.'}
-                  </HelperText>
-                  <ButtonRow style={{ marginTop: 14 }}>
-                    <Button
-                      type="button"
-                      compact
-                      disabled={!plan.configured || isLoadingPlan === plan.id}
-                      onClick={() => handleCheckout(plan.id)}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      {isLoadingPlan === plan.id ? 'Opening checkout...' : plan.configured ? details.cta : 'Not configured'}
-                    </Button>
-                  </ButtonRow>
-                </Card>
+                  <Card
+                    key={plan.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    style={{ background: isSubscription ? 'rgba(124, 58, 237, 0.16)' : undefined }}
+                  >
+                    <Stack gap="12px">
+                      <Cluster justify="space-between" align="flex-start">
+                        <Eyebrow>{details.badge}</Eyebrow>
+                        <StatChip>{details.family}</StatChip>
+                      </Cluster>
+                      <SectionTitle style={{ fontSize: '1.2rem' }}>
+                        {details.title}
+                      </SectionTitle>
+                      <Subtitle>{details.description}</Subtitle>
+                      <HelperText>
+                        {plan.credits} AI game credits {plan.mode === 'subscription' ? 'included each billing cycle.' : 'added after payment.'}
+                      </HelperText>
+                      <Button
+                        type="button"
+                        compact
+                        disabled={!plan.configured || isLoadingPlan === plan.id}
+                        onClick={() => handleCheckout(plan.id)}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {isLoadingPlan === plan.id ? 'Opening checkout...' : plan.configured ? details.cta : 'Not configured'}
+                      </Button>
+                    </Stack>
+                  </Card>
                 );
               })}
             </Grid>
           </>
         )}
+        </PanelBody>
       </GlassPanel>
     </Shell>
   );
