@@ -182,13 +182,13 @@ export function shouldAttemptQuestionResync({ remainingMs, connectionStatus, has
 }
 
 export function getRevealTimingLabel(revealTiming) {
-  return revealTiming === 'all_answered' ? 'Reveal: when all answer' : 'Reveal: timer ends';
+  return revealTiming === 'all_answered' ? 'Reveal: everyone answered' : 'Reveal: full timer';
 }
 
 export function getSubmittedAnswerMessage(revealTiming) {
   return revealTiming === 'all_answered'
-    ? '✓ Answer submitted. Waiting for the other players to lock in.'
-    : '✓ Answer submitted. Waiting for the timer to finish.';
+    ? '✓ Answer locked in. Waiting for everyone else.'
+    : '✓ Answer locked in. Reveal comes when time is up.';
 }
 
 export function getHostAuthorityLabel(player) {
@@ -201,11 +201,11 @@ export function getHostAuthorityLabel(player) {
 
 export function getCreateButtonLabel({ isLoading, isSignedInAiBlocked, user, hasOpenAI }) {
   if (isLoading) {
-    return user && hasOpenAI ? 'Generating questions...' : 'Creating demo room...';
+    return user && hasOpenAI ? 'Preparing your game...' : 'Creating demo game...';
   }
 
   if (isSignedInAiBlocked) {
-    return 'Add AI games to create AI game';
+    return 'Add AI games to host again';
   }
 
   return user && hasOpenAI ? 'Create AI game' : 'Create demo game';
@@ -218,43 +218,43 @@ export function getCreateLoadingMessage({ user, hasOpenAI }) {
 export function getCreateLoadingMessages({ user, hasOpenAI }) {
   return user && hasOpenAI
     ? [
-        'Generating fresh questions...',
-        'Thinking hard to provide a challenge...',
-        'Checking the answers make sense...',
+        'Writing fresh questions...',
+        'Building a balanced challenge...',
+        'Checking every answer...',
         'Almost ready to launch...',
       ]
     : [
-        'Preparing your demo room...',
-        'Loading built-in questions...',
+        'Preparing your demo game...',
+        'Loading a ready-made question set...',
         'Almost ready to launch...',
       ];
 }
 
 function MarketingHome() {
   const stats = [
-    ['10-question rounds', 'Balanced pacing that fits short sessions and party play.'],
-    ['Reconnect aware', 'Players can refresh and still keep their seat while the server stays alive.'],
-    ['Host-led control', 'Only the host launches the game and advances the room.'],
+    ['10-question games', 'Short enough for a break, long enough to feel like a real match.'],
+    ['No one gets left behind', 'Players can refresh or return to the room without losing their place.'],
+    ['Host stays in control', 'You decide when the game starts and when the next question begins.'],
   ];
 
   return (
     <Shell>
       <HeroCard initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
         <PanelTitleHeader $hero>
-          <Title>Kazoot brings reliable multiplayer quiz nights back to life.</Title>
+          <Title>Host a quiz night your friends can join in seconds.</Title>
         </PanelTitleHeader>
         <PanelBody>
           <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <Stack gap="18px">
-              <Eyebrow>Fast, live, Railway-ready quiz battles</Eyebrow>
+              <Eyebrow>Fresh quiz nights without the setup</Eyebrow>
               <Subtitle>
-                Create a game in seconds, share a direct join link, and keep every round synchronized
-                with server-authoritative timing, live scoring, and GPT-5.4 generated question sets.
+                Pick a topic, invite players with a link or QR code, and let Kazoot run a smooth
+                10-question game with fair scoring and easy rejoin.
               </Subtitle>
               <Cluster>
-                <StatChip>GPT-5.4 question sets</StatChip>
-                <StatChip>Single-room host controls</StatChip>
-                <StatChip>Realtime synchronized rounds</StatChip>
+                <StatChip>Fresh AI questions</StatChip>
+                <StatChip>Phone-friendly joining</StatChip>
+                <StatChip>Fair live scoring</StatChip>
               </Cluster>
               <ButtonRow>
                 <Button as={Link} to="/create">
@@ -268,9 +268,9 @@ function MarketingHome() {
           </Card>
           <Grid gap="18px" $mobileColumns="1fr" style={{ marginTop: 18 }}>
             {[
-              ['Authoritative realtime', 'Server-timed rounds prevent drift, duplicate scoring, and stale timer bugs.'],
-              ['Rejoin without chaos', 'Players reconnect with stored tokens instead of losing their seat mid-game.'],
-              ['Better AI prompts', 'GPT-5.4 uses structured output plus duplicate filtering to keep sets fresh.'],
+              ['Any topic becomes a game', 'Turn movies, football, history, work jokes, or niche hobbies into a playable quiz.'],
+              ['Players join from their phone', 'Share a link, show a QR code, or give out the room code. No install required.'],
+              ['The game keeps everyone together', 'Scores, timers, and answers stay aligned so the host can focus on the room.'],
             ].map(([headline, copy], index) => (
               <Card key={headline} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <div style={{ color: theme.colors.gold, fontSize: '0.82rem', marginBottom: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -321,8 +321,8 @@ function CreatePage() {
     ['20000', '20 seconds'],
   ];
   const revealTimingOptions = [
-    ['timer', 'Wait for timer', 'Keeps suspense and gives everyone the full round.'],
-    ['all_answered', 'Reveal when all answer', 'Moves faster when every connected player has locked in.'],
+    ['timer', 'Full suspense', 'Always wait for the timer so every player gets the same window.'],
+    ['all_answered', 'Reveal when everyone answers', 'Move faster when the room has locked in.'],
   ];
   const freeRemainingThisMonth = usage?.freeRemainingThisMonth ?? usage?.freeRemainingToday ?? 0;
   const paidCredits = usage?.credits ?? 0;
@@ -395,14 +395,14 @@ function CreatePage() {
       <Shell>
         <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
           <PanelTitleHeader>
-            <SectionTitle>Host with AI questions or start a demo room.</SectionTitle>
+            <SectionTitle>How would you like to host?</SectionTitle>
           </PanelTitleHeader>
           <PanelBody>
             <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
-              <Eyebrow>Choose how you want to host</Eyebrow>
+              <Eyebrow>Start fast, upgrade when it matters</Eyebrow>
               <Subtitle style={{ marginTop: 12 }}>
-                Sign in with Google to generate unique GPT-5.4 games and get 3 free AI games per month.
-                You can also continue without login and host with built-in demo questions.
+                Sign in to create fresh AI-generated games and get 3 free AI games this month.
+                Or try the room flow instantly with a demo game.
               </Subtitle>
               <ButtonRow style={{ marginTop: 18 }}>
                 <Button as={Link} to="/" variant="ghost" compact>
@@ -417,10 +417,10 @@ function CreatePage() {
             <ChoiceCard $featured initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <Stack gap="14px">
                 <Eyebrow>Recommended for hosts</Eyebrow>
-                <SectionTitle style={{ fontSize: '1.35rem' }}>Generate unique AI games</SectionTitle>
+                <SectionTitle style={{ fontSize: '1.35rem' }}>Create a fresh AI game</SectionTitle>
                 <Subtitle>
-                  Use Google login to unlock GPT-5.4 question generation, track your AI games left, and get 3 free
-                  AI games every month before paid AI games are used.
+                  Best when you are actually hosting. Choose any topic, keep your AI games left in one place,
+                  and use your free monthly games before paid ones.
                 </Subtitle>
                 <Button type="button" disabled={!isConfigured} onClick={signIn} whileTap={{ scale: 0.98 }}>
                   Continue with Google
@@ -433,8 +433,7 @@ function CreatePage() {
                 <Eyebrow>No login needed</Eyebrow>
                 <SectionTitle style={{ fontSize: '1.35rem' }}>Host a demo game</SectionTitle>
                 <Subtitle>
-                  Start quickly with built-in demo questions. This is great for testing the room flow, but it
-                  will not generate fresh AI question sets.
+                  Try Kazoot with built-in questions. Great for checking the flow before you spend an AI game.
                 </Subtitle>
                 <Button
                   type="button"
@@ -457,14 +456,14 @@ function CreatePage() {
     <Shell>
       <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
         <PanelTitleHeader>
-          <SectionTitle>Create a new session</SectionTitle>
+          <SectionTitle>Create your game</SectionTitle>
         </PanelTitleHeader>
         <PanelBody>
         <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
-            <Eyebrow>Host a polished game room</Eyebrow>
+            <Eyebrow>Set the mood, then invite everyone in</Eyebrow>
             <Subtitle style={{ marginTop: 12 }}>
-              Pick a topic, choose a language, and Kazoot will prepare a 10-question set with
-              stable realtime multiplayer.
+              Pick a topic and language. Kazoot prepares a 10-question game that players can join
+              from any phone and rejoin if they drop out.
             </Subtitle>
           <ButtonRow style={{ marginTop: 18 }}>
             <Button as={Link} to="/" variant="ghost" compact>
@@ -480,13 +479,13 @@ function CreatePage() {
           <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18, background: user ? theme.gradients.success : theme.gradients.accent }}>
             <HeaderRow style={{ marginBottom: 0 }}>
               <div>
-                <Label>{user ? 'AI hosting balance' : 'Demo hosting mode'}</Label>
+                <Label>{user ? 'AI games left' : 'Demo hosting mode'}</Label>
                 <HelperText>
                   {user
                     ? isSignedInAiBlocked
-                      ? 'You are out of free AI games and paid AI games left. Subscribe or buy a pack before creating another AI-generated game.'
-                      : `${freeRemainingThisMonth} free AI games left this month. ${paidCredits} paid AI games left. Free games are used first.`
-                    : 'You are creating a demo room with built-in questions. Sign in if you want unique GPT-5.4 questions and 3 free AI games per month.'}
+                      ? 'You are out of AI games for now. Subscribe or buy a pack before creating another fresh AI game.'
+                      : `${freeRemainingThisMonth} free this month · ${paidCredits} paid AI games left. Free games are used first.`
+                    : 'You are creating a demo game with built-in questions. Sign in for fresh AI questions and 3 free AI games this month.'}
                 </HelperText>
               </div>
               {user ? (
@@ -505,7 +504,7 @@ function CreatePage() {
                     onClick={signIn}
                     whileTap={{ scale: 0.98 }}
                   >
-                    Sign in for AI questions
+                    Sign in for fresh questions
                   </Button>
                 </ButtonRow>
               )}
@@ -538,8 +537,8 @@ function CreatePage() {
                 </Select>
                 <HelperText>
                   {hasOpenAI
-                    ? 'GPT-5.4 is available for live question generation.'
-                    : 'OpenAI is unavailable, so Kazoot will fall back to demo question banks.'}
+                    ? 'Fresh AI questions are available for signed-in hosts.'
+                    : 'Demo questions are available right now.'}
                 </HelperText>
               </div>
             </FormGrid>
@@ -567,8 +566,7 @@ function CreatePage() {
           >
             <Label>Question timer</Label>
             <HelperText>
-              Choose how long players get to answer each question. Shorter timers feel sharper; 20 seconds is the
-              most forgiving default.
+              Choose the pace. Short timers feel intense; 20 seconds gives everyone room to think.
             </HelperText>
             <Cluster style={{ marginTop: 14 }}>
               {timerOptions.map(([value, label]) => (
@@ -599,9 +597,9 @@ function CreatePage() {
               background: theme.gradients.success,
             }}
           >
-            <Label>Reveal results</Label>
+            <Label>Answer reveal</Label>
             <HelperText>
-              Choose whether rounds resolve as soon as every connected player answers, or always wait for the timer.
+              Choose whether to keep the suspense or move faster when everyone has answered.
             </HelperText>
             <Grid gap="12px" columns="repeat(auto-fit, minmax(220px, 1fr))" $mobileColumns="1fr" style={{ marginTop: 14 }}>
               {revealTimingOptions.map(([value, label, description]) => (
@@ -720,14 +718,14 @@ function JoinPage() {
     <Shell>
       <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
         <PanelTitleHeader>
-          <SectionTitle>Join a live session</SectionTitle>
+          <SectionTitle>Join the game</SectionTitle>
         </PanelTitleHeader>
         <PanelBody>
         <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
-            <Eyebrow>Jump straight into a room</Eyebrow>
+            <Eyebrow>Enter your name and room code</Eyebrow>
             <Subtitle style={{ marginTop: 12 }}>
-              Enter your name and the room code, or open a direct session link from your
-              host to reconnect automatically.
+              Your host may also send a direct link. If you return later, Kazoot can bring you
+              back to the same seat.
             </Subtitle>
           <ButtonRow style={{ marginTop: 18 }}>
             <Button as={Link} to="/" variant="ghost" compact>
@@ -750,7 +748,7 @@ function JoinPage() {
               />
             </div>
             <div>
-              <Label htmlFor="join-code">Session code</Label>
+              <Label htmlFor="join-code">Room code</Label>
               <Input
                 id="join-code"
                 value={sessionId}
@@ -769,7 +767,7 @@ function JoinPage() {
               disabled={!username.trim() || ![6, 8].includes(sessionId.trim().length)}
               whileTap={{ scale: 0.98 }}
             >
-              Join session
+              Join game
             </Button>
           </Cluster>
         </form>
@@ -782,11 +780,11 @@ function JoinPage() {
 
 function SessionHeader({ session, connectionStatus }) {
   const stageLabel = session.gameState === 'waiting'
-    ? 'Lobby open'
+    ? 'Ready to start'
     : session.gameState === 'question'
-      ? 'Question live'
+      ? 'Question in play'
       : session.gameState === 'results'
-        ? 'Results'
+        ? 'Answer revealed'
         : 'Finished';
 
   return (
@@ -796,11 +794,11 @@ function SessionHeader({ session, connectionStatus }) {
           <Eyebrow>
             Room {session.sessionId}
             <span aria-hidden="true">•</span>
-            {session.questionSource === 'openai' ? 'GPT-5.4 set' : 'Demo fallback'}
+            {session.questionSource === 'openai' ? 'Fresh AI game' : 'Demo game'}
           </Eyebrow>
           <div style={{ marginTop: 14 }}>
             <SectionTitle>{session.topic}</SectionTitle>
-            <Subtitle>{session.language} questions, 10 rounds, live server-authoritative scoring.</Subtitle>
+            <Subtitle>{session.language} questions, 10 rounds, fair live scoring.</Subtitle>
           </div>
         </div>
         <div
@@ -814,7 +812,7 @@ function SessionHeader({ session, connectionStatus }) {
           <StatChip>{session.connectedPlayerCount} connected</StatChip>
           <StatChip>{stageLabel}</StatChip>
           <Pill $tone={connectionStatus === 'connected' ? 'success' : 'warning'}>
-            {connectionStatus === 'connected' ? 'Live connection' : 'Reconnecting...'}
+            {connectionStatus === 'connected' ? 'Connected' : 'Rejoining...'}
           </Pill>
           {session.you?.isHost ? (
             <Pill $tone="success">
@@ -847,7 +845,7 @@ function GameplayTopBar({ session, connectionStatus, questionNumber, totalQuesti
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           <Pill $tone={getConnectionTone(connectionStatus)}>
-            {connectionStatus === 'connected' ? 'Live connection' : 'Reconnecting...'}
+            {connectionStatus === 'connected' ? 'Connected' : 'Rejoining...'}
           </Pill>
         </div>
       </HeaderRow>
@@ -868,25 +866,24 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
   return (
     <Grid columns="1.3fr 1fr" $mobileColumns="1fr">
       <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-        <SectionTitle>Lobby</SectionTitle>
+        <SectionTitle>Invite players, then start when ready</SectionTitle>
         <Subtitle style={{ marginTop: 8 }}>
-          Share the code or link, wait for everyone to connect, then launch the first question when
-          you are ready.
+          Share the code, link, or QR code. Players can join from their own phones.
         </Subtitle>
 
         <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 20 }}>
           <StatChip>Code: {session.sessionId}</StatChip>
-          <StatChip>Questions: {session.questionCount}</StatChip>
+          <StatChip>{session.questionCount} questions</StatChip>
           <StatChip>{roundTimerLabel}</StatChip>
           <StatChip>{revealTimingLabel}</StatChip>
         </Grid>
 
         <Grid gap="18px" columns="minmax(0, 1fr) auto" $mobileColumns="1fr" style={{ marginTop: 18, alignItems: 'end' }}>
           <div>
-            <Label htmlFor="share-link">Direct join link</Label>
+            <Label htmlFor="share-link">Invite link</Label>
             <Input id="share-link" value={shareLink} readOnly onFocus={(event) => event.target.select()} />
             <HelperText style={{ marginTop: 8 }}>
-              Share this link or let friends scan the QR code to join on their own phones.
+              Send the link or show the QR code. No app install needed.
             </HelperText>
           </div>
           <Stack gap="10px" style={{ alignItems: 'center' }}>
@@ -906,7 +903,7 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
               <QRCodeSVG value={shareLink} size={196} bgColor="#ffffff" fgColor="#0f172a" level="M" />
             </div>
             <HelperText style={{ maxWidth: 220, textAlign: 'center' }}>
-              Bright screen and steady phone make scanning easier.
+              Keep the screen bright and steady for easier scanning.
             </HelperText>
           </Stack>
         </Grid>
@@ -922,7 +919,7 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
               disabled={!canStart}
               whileTap={{ scale: canStart ? 0.98 : 1 }}
             >
-              Start live game
+              Start game
             </Button>
           ) : null}
           <Button type="button" variant="ghost" onClick={onLeave} whileTap={{ scale: 0.98 }}>
@@ -935,9 +932,9 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
               ? canStart
                 ? session.you?.hostAuthority === 'temporary' || session.you?.isTemporaryHost
                   ? 'The host is offline, so you can keep the room moving until they return.'
-                  : 'Only the host can start the game. You can kick off immediately or wait for more players to join.'
+                  : 'You can start now or wait for more players to join.'
                 : 'Only the host can start the game.'
-              : 'Only the host can start the game. You will move into the quiz as soon as the host begins.'}
+              : 'You will move into the first question as soon as the host starts.'}
           </MobileOnlyHint>
         </div>
       </Card>
@@ -1140,7 +1137,7 @@ function QuestionView({ question, revealTiming, onSubmitAnswer, onResyncSession,
         </Banner>
       ) : remainingMs === 0 ? (
         <Banner style={{ marginTop: 14, marginBottom: 0 }}>
-          Time is up. Waiting for the round result from the server.
+          Time is up. Revealing the answer...
         </Banner>
       ) : null}
     </Card>
@@ -1156,17 +1153,17 @@ function ResultsView({ results, session, onNextQuestion }) {
         <Eyebrow>Round recap</Eyebrow>
         <div style={{ marginTop: 16 }}>
           <SectionTitle>
-            Correct answer: {String.fromCharCode(65 + results.correctAnswer)}. {results.correctAnswerText}
+            Answer {String.fromCharCode(65 + results.correctAnswer)} was correct: {results.correctAnswerText}
           </SectionTitle>
         </div>
         {typeof results.playerAnswer === 'number' ? (
           <Banner $tone={results.answerWasCorrect ? 'success' : undefined} style={{ marginTop: 16 }}>
-            {results.answerWasCorrect ? 'You got it right.' : 'Your answer is highlighted below.'}
+            {results.answerWasCorrect ? 'Nice, you got it right.' : 'Your answer is highlighted below.'}
             {' '}
             {typeof results.earnedPoints === 'number' ? `+${results.earnedPoints} pts this round.` : null}
           </Banner>
         ) : (
-          <Banner style={{ marginTop: 16 }}>You did not lock in an answer before time ran out.</Banner>
+          <Banner style={{ marginTop: 16 }}>Time ran out before you locked in an answer.</Banner>
         )}
 
         <Grid gap="12px" $mobileColumns="1fr" style={{ marginTop: 20 }}>
@@ -1252,7 +1249,7 @@ function GameEndView({ leaderboard, onLeave }) {
         <Eyebrow>Game complete</Eyebrow>
         <div style={{ marginTop: 16 }}>
           <SectionTitle>Final standings</SectionTitle>
-          <Subtitle>Multiplayer round-tripping complete. Everyone saw the same results and final scores.</Subtitle>
+          <Subtitle>Final scores are in. Thanks for playing.</Subtitle>
         </div>
 
         <Grid
@@ -1312,8 +1309,8 @@ function JoinSessionCard({ sessionId, defaultUsername, savedSession, onJoin }) {
           <Stack style={{ alignItems: 'center', textAlign: 'center' }}>
             <Eyebrow>Player invite</Eyebrow>
             <Subtitle>
-              Your host has already created this game. Enter the name you want shown on the scoreboard,
-              then join the lobby.
+              Your host has already created the game. Enter the name you want on the scoreboard,
+              then join the room.
             </Subtitle>
           </Stack>
           {savedSession?.username ? (
@@ -1323,12 +1320,12 @@ function JoinSessionCard({ sessionId, defaultUsername, savedSession, onJoin }) {
               style={{ width: 'min(420px, 100%)', margin: '24px auto 0', textAlign: 'center' }}
             >
               <Stack gap="12px" style={{ alignItems: 'center' }}>
-                <Eyebrow>Saved seat found</Eyebrow>
+                <Eyebrow>We found your seat</Eyebrow>
                 <Subtitle style={{ margin: 0 }}>
-                  Reconnect to this room as {savedSession.username}, or join as someone else below.
+                  Rejoin as {savedSession.username} without losing your score, or join as someone else below.
                 </Subtitle>
                 <Button type="button" compact onClick={() => onJoin(savedSession.username, false)}>
-                  Reconnect as {savedSession.username}
+                  Rejoin as {savedSession.username}
                 </Button>
               </Stack>
             </Card>
@@ -1365,7 +1362,7 @@ function JoiningSessionCard({ sessionId }) {
     <EmptyState initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
       <SectionTitle>Joining room {sessionId}</SectionTitle>
       <Subtitle style={{ marginTop: 8 }}>
-        Syncing your seat and loading the live room state.
+        Getting your seat ready and loading the room.
       </Subtitle>
       <Banner style={{ marginTop: 20, marginBottom: 0 }}>Loading the lobby...</Banner>
     </EmptyState>

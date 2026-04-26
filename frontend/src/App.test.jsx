@@ -23,7 +23,7 @@ afterEach(() => {
 test('renders Kazoot marketing headline', () => {
   render(<App />);
   expect(
-    screen.getByText(/Kazoot brings reliable multiplayer quiz nights back to life/i)
+    screen.getByText(/Host a quiz night your friends can join in seconds/i)
   ).toBeInTheDocument();
 });
 
@@ -140,10 +140,10 @@ test('join-game payload omits null optional tokens while preserving real reconne
 });
 
 test('formats reveal timing labels and submitted answer copy', () => {
-  expect(getRevealTimingLabel('all_answered')).toBe('Reveal: when all answer');
-  expect(getRevealTimingLabel('timer')).toBe('Reveal: timer ends');
-  expect(getSubmittedAnswerMessage('all_answered')).toMatch(/other players/i);
-  expect(getSubmittedAnswerMessage('timer')).toMatch(/timer/i);
+  expect(getRevealTimingLabel('all_answered')).toBe('Reveal: everyone answered');
+  expect(getRevealTimingLabel('timer')).toBe('Reveal: full timer');
+  expect(getSubmittedAnswerMessage('all_answered')).toMatch(/everyone else/i);
+  expect(getSubmittedAnswerMessage('timer')).toMatch(/time is up/i);
 });
 
 test('formats owner and temporary host labels', () => {
@@ -163,9 +163,9 @@ test('formats create loading copy for AI and demo sessions', () => {
       user: { id: 'user-1' },
       hasOpenAI: true,
     })
-  ).toBe('Generating questions...');
+  ).toBe('Preparing your game...');
   expect(getCreateLoadingMessage({ user: { id: 'user-1' }, hasOpenAI: true })).toBe(aiMessages[0]);
-  expect(aiMessages).toContain('Thinking hard to provide a challenge...');
+  expect(aiMessages).toContain('Building a balanced challenge...');
 
   expect(
     getCreateButtonLabel({
@@ -174,9 +174,9 @@ test('formats create loading copy for AI and demo sessions', () => {
       user: null,
       hasOpenAI: true,
     })
-  ).toBe('Creating demo room...');
+  ).toBe('Creating demo game...');
   expect(getCreateLoadingMessage({ user: null, hasOpenAI: true })).toBe(demoMessages[0]);
-  expect(demoMessages).toContain('Loading built-in questions...');
+  expect(demoMessages).toContain('Loading a ready-made question set...');
 });
 
 test('formats monthly AI games left copy', () => {
@@ -185,7 +185,7 @@ test('formats monthly AI games left copy', () => {
     isSignedInAiBlocked: true,
     user: { id: 'user-1' },
     hasOpenAI: true,
-  })).toBe('Add AI games to create AI game');
+  })).toBe('Add AI games to host again');
 
   expect(
     getUsageSummaryLabel({

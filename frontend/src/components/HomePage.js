@@ -120,7 +120,7 @@ const HomePage = ({ onCreateGame, onJoinGame }) => {
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.5 }}
       >
-        🎮 Kazoot!
+        Kazoot
       </Title>
       
       <Subtitle
@@ -128,7 +128,7 @@ const HomePage = ({ onCreateGame, onJoinGame }) => {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.4, duration: 0.5 }}
       >
-        AI-powered quiz battles that bring the fun! Challenge friends with instantly generated questions on any topic.
+        Host a fresh quiz game in seconds. Pick a topic, invite players, and let everyone join from their phone.
       </Subtitle>
 
       <ButtonContainer
@@ -142,7 +142,7 @@ const HomePage = ({ onCreateGame, onJoinGame }) => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          🚀 Create Game
+          Host a game
         </Button>
         
         <Button
@@ -151,7 +151,7 @@ const HomePage = ({ onCreateGame, onJoinGame }) => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          🎯 Join Game
+          Join a game
         </Button>
       </ButtonContainer>
 
@@ -164,10 +164,10 @@ const HomePage = ({ onCreateGame, onJoinGame }) => {
           whileHover={{ scale: 1.05, y: -5 }}
           transition={{ duration: 0.2 }}
         >
-          <FeatureIcon>🤖</FeatureIcon>
-          <FeatureTitle>AI-Generated Questions</FeatureTitle>
+          <FeatureIcon>?</FeatureIcon>
+          <FeatureTitle>Any Topic Becomes A Game</FeatureTitle>
           <FeatureDescription>
-            Get unique, engaging questions on any topic instantly powered by advanced AI
+            Create fresh questions for parties, classrooms, teams, or inside jokes.
           </FeatureDescription>
         </FeatureCard>
 
@@ -175,10 +175,10 @@ const HomePage = ({ onCreateGame, onJoinGame }) => {
           whileHover={{ scale: 1.05, y: -5 }}
           transition={{ duration: 0.2 }}
         >
-          <FeatureIcon>⚡</FeatureIcon>
-          <FeatureTitle>Real-time Multiplayer</FeatureTitle>
+          <FeatureIcon>+</FeatureIcon>
+          <FeatureTitle>Players Join Fast</FeatureTitle>
           <FeatureDescription>
-            Battle friends in live quiz sessions with instant scoring and leaderboards
+            Share a code or link and get everyone into the room without setup.
           </FeatureDescription>
         </FeatureCard>
 
@@ -186,10 +186,10 @@ const HomePage = ({ onCreateGame, onJoinGame }) => {
           whileHover={{ scale: 1.05, y: -5 }}
           transition={{ duration: 0.2 }}
         >
-          <FeatureIcon>🎨</FeatureIcon>
-          <FeatureTitle>Beautiful Animations</FeatureTitle>
+          <FeatureIcon>#</FeatureIcon>
+          <FeatureTitle>Fair Scores, Clear Results</FeatureTitle>
           <FeatureDescription>
-            Enjoy smooth, engaging animations that make every quiz feel exciting
+            Keep the game moving with visible answers, points, and standings.
           </FeatureDescription>
         </FeatureCard>
       </FeatureGrid>

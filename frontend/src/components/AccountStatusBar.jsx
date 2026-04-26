@@ -184,7 +184,7 @@ export function AccountStatusBar({ dense = false, mode = 'default' }) {
           </>
         ) : (
           <>
-            <BenefitText>3 free AI games per month for hosts</BenefitText>
+            <BenefitText>Host 3 AI games free this month</BenefitText>
             <Button type="button" variant="secondary" compact disabled={!isConfigured} onClick={signIn}>
               Sign in for AI games
             </Button>

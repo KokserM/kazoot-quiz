@@ -169,7 +169,7 @@ const JoinGame = ({ onJoinGame, onBack, prefilledGameCode = '' }) => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        🎯 Join Game
+        Join the game
       </Title>
 
       <Subtitle
@@ -177,23 +177,23 @@ const JoinGame = ({ onJoinGame, onBack, prefilledGameCode = '' }) => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        Enter the game code provided by your host to join the quiz battle!
+        Enter your name and the room code from your host.
       </Subtitle>
 
       <Form onSubmit={handleSubmit}>
         <InputGroup>
-          <Label>Your Name</Label>
+          <Label>Player name</Label>
           <Input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="Enter your name"
+            placeholder="Your name"
             required
           />
         </InputGroup>
 
         <InputGroup>
-          <Label>Game Code</Label>
+          <Label>Room code</Label>
           <Input
             type="text"
             value={sessionCode}
@@ -223,7 +223,7 @@ const JoinGame = ({ onJoinGame, onBack, prefilledGameCode = '' }) => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            Join Game
+            Join game
           </Button>
         </ButtonContainer>
       </Form>
@@ -233,10 +233,9 @@ const JoinGame = ({ onJoinGame, onBack, prefilledGameCode = '' }) => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
       >
-        <InfoTitle>How to Join</InfoTitle>
+        <InfoTitle>How to join</InfoTitle>
         <InfoText>
-          Ask the game host for the room code. Once you enter it,
-          you'll be taken to the lobby where you can wait for the game to start!
+          Ask the host for the room code. Once you enter it, you will land in the lobby until the game starts.
         </InfoText>
       </InfoCard>
     </Container>

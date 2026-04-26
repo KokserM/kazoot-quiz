@@ -212,7 +212,7 @@ const CreateGame = ({ onCreateGame, onBack }) => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        🚀 Create New Game
+        Create your game
       </Title>
 
       <Subtitle
@@ -220,17 +220,17 @@ const CreateGame = ({ onCreateGame, onBack }) => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        Set up your quiz session and challenge friends with AI-generated questions!
+        Choose a topic, invite players, and start a 10-question game everyone can join from their phone.
       </Subtitle>
 
       <Form onSubmit={handleSubmit}>
         <InputGroup>
-          <Label>Your Name</Label>
+          <Label>Host name</Label>
           <Input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="Enter your name"
+            placeholder="Your name"
             required
           />
         </InputGroup>
@@ -253,17 +253,17 @@ const CreateGame = ({ onCreateGame, onBack }) => {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
           >
-            🤖 Questions will be generated in {languages.find(l => l.code === language)?.name}
+            Questions will be prepared in {languages.find(l => l.code === language)?.name}.
           </LanguageInfo>
         </InputGroup>
 
         <InputGroup>
-          <Label>Quiz Topic</Label>
+          <Label>Game topic</Label>
           <Input
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="What should the quiz be about?"
+            placeholder="Movies, football, space history..."
             required
           />
         </InputGroup>
@@ -315,7 +315,7 @@ const CreateGame = ({ onCreateGame, onBack }) => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            {isLoading ? 'Creating...' : 'Create Game'}
+            {isLoading ? 'Creating...' : 'Create game'}
           </Button>
         </ButtonContainer>
       </Form>
