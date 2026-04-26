@@ -4,6 +4,7 @@ import App, {
   getCreateButtonLabel,
   getCreateLoadingMessage,
   getCreateLoadingMessages,
+  getHostAuthorityLabel,
   getRevealTimingLabel,
   getRemainingQuestionMs,
   getSessionPhase,
@@ -11,7 +12,7 @@ import App, {
   shouldAttemptQuestionResync,
   shouldShowSessionJoinLoading,
 } from './App';
-import { getSocketTransports } from './providers/GameProvider';
+import { buildJoinGamePayload, getSocketTransports } from './providers/GameProvider';
 import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlayerSession } from './lib/storage';
 
 afterEach(() => {
@@ -98,11 +99,56 @@ test('local development keeps websocket fallback transports', () => {
   expect(getSocketTransports()).toEqual(['polling', 'websocket']);
 });
 
+test('join-game payload omits null optional tokens while preserving real reconnect tokens', () => {
+  const playerPayload = buildJoinGamePayload({
+    sessionId: 'ABC12345JK',
+    username: 'Guest',
+    isCreator: false,
+    saved: {
+      playerToken: 'player-token-123',
+      hostToken: null,
+    },
+  });
+
+  expect(playerPayload).toEqual({
+    sessionId: 'ABC12345JK',
+    username: 'Guest',
+    isCreator: false,
+    playerToken: 'player-token-123',
+  });
+  expect(playerPayload).not.toHaveProperty('hostToken');
+
+  expect(
+    buildJoinGamePayload({
+      sessionId: 'ABC12345JK',
+      username: 'Host',
+      isCreator: true,
+      hostToken: 'fresh-host-token-123',
+      saved: {
+        playerToken: 'host-player-token-123',
+        hostToken: 'stale-host-token-123',
+      },
+    })
+  ).toEqual({
+    sessionId: 'ABC12345JK',
+    username: 'Host',
+    isCreator: true,
+    playerToken: 'host-player-token-123',
+    hostToken: 'fresh-host-token-123',
+  });
+});
+
 test('formats reveal timing labels and submitted answer copy', () => {
   expect(getRevealTimingLabel('all_answered')).toBe('Reveal: when all answer');
   expect(getRevealTimingLabel('timer')).toBe('Reveal: timer ends');
   expect(getSubmittedAnswerMessage('all_answered')).toMatch(/other players/i);
   expect(getSubmittedAnswerMessage('timer')).toMatch(/timer/i);
+});
+
+test('formats owner and temporary host labels', () => {
+  expect(getHostAuthorityLabel({ isHost: true, hostAuthority: 'owner' })).toBe('Host');
+  expect(getHostAuthorityLabel({ isHost: true, hostAuthority: 'temporary' })).toBe('Temporary host');
+  expect(getHostAuthorityLabel({ isHost: false, hostAuthority: 'none' })).toBe('Player');
 });
 
 test('formats create loading copy for AI and demo sessions', () => {

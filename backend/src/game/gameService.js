@@ -148,6 +148,7 @@ class GameService {
       questionTimeLimitMs: session.questionTimeLimitMs,
       revealTiming: session.revealTiming,
       questionSource: session.questionSource,
+      hostToken: session.hostOwnerToken,
     };
   }
 
@@ -281,7 +282,9 @@ class GameService {
       playerId,
       socketId: socket.id,
     });
-    session.reconnectPlayer(player, socket.id, player.username);
+    session.reconnectPlayer(player, socket.id, player.username, {
+      hostToken: socket.data.hostToken,
+    });
     this.emitSessionUpdate(session);
     this.emitPhaseSnapshot(session, player);
     this.log('recovered_socket_rebound', {
@@ -334,7 +337,9 @@ class GameService {
           throw new Error('That name is already in use');
         }
 
-        player = session.reconnectPlayer(player, socket.id, payload.username);
+        player = session.reconnectPlayer(player, socket.id, payload.username, {
+          hostToken: payload.hostToken,
+        });
         reconnected = true;
       }
     }
@@ -360,7 +365,7 @@ class GameService {
       player = session.addPlayer({
         username: payload.username,
         socketId: socket.id,
-        wantsHost: payload.isCreator,
+        hostToken: payload.hostToken,
       });
     }
 
@@ -373,14 +378,14 @@ class GameService {
     socket.data.sessionId = session.id;
     socket.data.playerId = player.playerId;
     socket.data.playerToken = player.playerToken;
-    socket.data.hostToken = player.hostToken || null;
+    socket.data.hostToken = player.hostToken || payload.hostToken || null;
 
     const joinedPayload = {
       ...session.toSessionSummary(player.playerId),
       isAdmin: player.isHost,
       playerId: player.playerId,
       playerToken: player.playerToken,
-      hostToken: player.isHost ? player.hostToken : null,
+      hostToken: player.hostAuthority === 'owner' ? player.hostToken : null,
       reconnected,
     };
 
@@ -460,7 +465,7 @@ class GameService {
       throw new Error('You are not in a game');
     }
 
-    if (!player.isHost) {
+    if (!session.canControlGame(player)) {
       throw new Error('Only the game host can start the game');
     }
 
@@ -586,7 +591,7 @@ class GameService {
       throw new Error('You are not in a game');
     }
 
-    if (!player.isHost) {
+    if (!session.canControlGame(player)) {
       throw new Error('Only the game host can continue');
     }
 
@@ -628,6 +633,7 @@ class GameService {
       this.io.to(session.id).emit('admin-changed', {
         newAdminId: newHost.playerId,
         newAdminUsername: newHost.username,
+        isTemporaryHost: newHost.isTemporaryHost,
       });
     }
 

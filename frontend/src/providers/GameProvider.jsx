@@ -9,6 +9,25 @@ export function getSocketTransports() {
   return ['polling', 'websocket'];
 }
 
+export function buildJoinGamePayload({ sessionId, username, isCreator = false, hostToken = null, saved = null }) {
+  const payload = {
+    sessionId,
+    username,
+    isCreator,
+  };
+
+  if (typeof saved?.playerToken === 'string' && saved.playerToken.length > 0) {
+    payload.playerToken = saved.playerToken;
+  }
+
+  const resolvedHostToken = typeof hostToken === 'string' && hostToken.length > 0 ? hostToken : saved?.hostToken;
+  if (typeof resolvedHostToken === 'string' && resolvedHostToken.length > 0) {
+    payload.hostToken = resolvedHostToken;
+  }
+
+  return payload;
+}
+
 function logSocketEvent(eventName, details = {}) {
   if (!import.meta.env.PROD) {
     return;
@@ -86,7 +105,7 @@ export function GameProvider({ children }) {
     }, 2800);
   }, []);
 
-  const emitJoinGame = useCallback((socket, { sessionId, username, isCreator = false, forceFresh = false }) => {
+  const emitJoinGame = useCallback((socket, { sessionId, username, isCreator = false, hostToken = null, forceFresh = false }) => {
     if (!sessionId || !username) {
       return;
     }
@@ -97,16 +116,17 @@ export function GameProvider({ children }) {
       sessionId,
       username,
       isCreator,
+      hostToken,
       forceFresh,
     };
 
-    socket.emit('join-game', {
+    socket.emit('join-game', buildJoinGamePayload({
       sessionId,
       username,
       isCreator,
-      playerToken: saved?.playerToken,
-      hostToken: saved?.hostToken,
-    });
+      hostToken,
+      saved,
+    }));
   }, []);
 
   useEffect(() => {
@@ -142,6 +162,7 @@ export function GameProvider({ children }) {
           sessionId: activeSession.sessionId,
           username: activeSession.you?.username,
           isCreator: Boolean(activeSession.you?.isHost),
+          hostToken: activeSession.hostToken || null,
         });
       }
     });
@@ -170,6 +191,7 @@ export function GameProvider({ children }) {
         sessionId: payload.sessionId,
         username: payload.you?.username || payload.username,
         isCreator: Boolean(payload.you?.isHost),
+        hostToken: payload.hostToken || null,
         forceFresh: false,
       };
       setSession(payload);
@@ -201,6 +223,7 @@ export function GameProvider({ children }) {
           ...payload,
           you: payload.you || previous?.you || null,
           playerToken: previous?.playerToken,
+          hostToken: previous?.hostToken,
           playerId: previous?.playerId,
           isAdmin: payload.you?.isHost ?? previous?.isAdmin,
         };
@@ -385,13 +408,14 @@ export function GameProvider({ children }) {
   }, []);
 
   const joinSession = useCallback(
-    ({ sessionId, username, isCreator = false, forceFresh = false }) => {
+    ({ sessionId, username, isCreator = false, hostToken = null, forceFresh = false }) => {
       const socket = ensureSocket();
       setError('');
       emitJoinGame(socket, {
         sessionId,
         username,
         isCreator,
+        hostToken,
         forceFresh,
       });
     },
@@ -440,6 +464,7 @@ export function GameProvider({ children }) {
       sessionId: activeSession?.sessionId || joinIntent?.sessionId,
       username: activeSession?.you?.username || joinIntent?.username,
       isCreator: Boolean(activeSession?.you?.isHost || joinIntent?.isCreator),
+      hostToken: activeSession?.hostToken || joinIntent?.hostToken || null,
     });
   }, [emitJoinGame, ensureSocket]);
 

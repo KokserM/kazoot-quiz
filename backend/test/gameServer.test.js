@@ -105,6 +105,7 @@ test('duplicate answer submissions do not inflate the score', async () => {
       sessionId: session.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: session.hostToken,
     });
 
     const hostState = await hostJoined;
@@ -173,6 +174,7 @@ test('session uses the host-selected timer length', async () => {
       sessionId: session.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: session.hostToken,
     });
     await joinedPromise;
 
@@ -418,6 +420,7 @@ test('saved player token cannot be reused under a different name after the game 
       sessionId: session.sessionId,
       username: 'PlayerOne',
       isCreator: true,
+      hostToken: session.hostToken,
     });
 
     const joinedPayload = await firstJoin;
@@ -453,7 +456,7 @@ test('original host can reclaim controls from a temporary host after reconnectin
     const guest = connectClient(runtime.baseUrl);
 
     const hostJoined = onceEventWithTimeout(host, 'joined-game');
-    host.emit('join-game', { sessionId: session.sessionId, username: 'Host', isCreator: true });
+    host.emit('join-game', { sessionId: session.sessionId, username: 'Host', isCreator: true, hostToken: session.hostToken });
     const hostState = await hostJoined;
 
     const guestJoined = onceEventWithTimeout(guest, 'joined-game');
@@ -486,6 +489,84 @@ test('original host can reclaim controls from a temporary host after reconnectin
   }
 });
 
+test('guest joining before creator does not get host controls', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, '90s Movies');
+    const guest = connectClient(runtime.baseUrl);
+    const host = connectClient(runtime.baseUrl);
+
+    const guestJoined = onceEventWithTimeout(guest, 'joined-game');
+    guest.emit('join-game', { sessionId: session.sessionId, username: 'EarlyGuest' });
+    const guestState = await guestJoined;
+    assert.equal(guestState.you?.isHost, false);
+    assert.equal(guestState.you?.hostAuthority, 'none');
+
+    const deniedStart = onceEventWithTimeout(guest, 'error');
+    guest.emit('start-game');
+    const deniedPayload = await deniedStart;
+    assert.match(deniedPayload.message, /Only the game host can start/i);
+
+    const hostJoined = onceEventWithTimeout(host, 'joined-game');
+    host.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Host',
+      isCreator: true,
+      hostToken: session.hostToken,
+    });
+    const hostState = await hostJoined;
+    assert.equal(hostState.you?.isHost, true);
+    assert.equal(hostState.you?.hostAuthority, 'owner');
+
+    const questionStarted = onceEventWithTimeout(host, 'question-start');
+    host.emit('start-game');
+    await questionStarted;
+
+    guest.disconnect();
+    host.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('temporary host can control while owner is unavailable', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, '90s Movies');
+    const host = connectClient(runtime.baseUrl);
+    const guest = connectClient(runtime.baseUrl);
+
+    const hostJoined = onceEventWithTimeout(host, 'joined-game');
+    host.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Host',
+      isCreator: true,
+      hostToken: session.hostToken,
+    });
+    await hostJoined;
+
+    const guestJoined = onceEventWithTimeout(guest, 'joined-game');
+    guest.emit('join-game', { sessionId: session.sessionId, username: 'Guest' });
+    await guestJoined;
+
+    const temporaryHostPromise = onceEventWithTimeout(guest, 'admin-changed');
+    host.disconnect();
+    const temporaryHost = await temporaryHostPromise;
+    assert.equal(temporaryHost.newAdminUsername, 'Guest');
+    assert.equal(temporaryHost.isTemporaryHost, true);
+
+    const questionStarted = onceEventWithTimeout(guest, 'question-start');
+    guest.emit('start-game');
+    await questionStarted;
+
+    guest.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
 test('host keeps host identity in session updates', async () => {
   const runtime = await startTestServer();
 
@@ -500,6 +581,7 @@ test('host keeps host identity in session updates', async () => {
       sessionId: session.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: session.hostToken,
     });
 
     const joinedPayload = await joinedPromise;
@@ -529,6 +611,7 @@ test('host can start a game alone', async () => {
       sessionId: session.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: session.hostToken,
     });
 
     await joinedPromise;
@@ -559,7 +642,7 @@ test('concurrent sessions stay isolated when different hosts start games', async
     await Promise.all([
       (() => {
         const joined = onceEventWithTimeout(hostOne, 'joined-game');
-        hostOne.emit('join-game', { sessionId: sessionOne.sessionId, username: 'HostOne', isCreator: true });
+        hostOne.emit('join-game', { sessionId: sessionOne.sessionId, username: 'HostOne', isCreator: true, hostToken: sessionOne.hostToken });
         return joined;
       })(),
       (() => {
@@ -569,7 +652,7 @@ test('concurrent sessions stay isolated when different hosts start games', async
       })(),
       (() => {
         const joined = onceEventWithTimeout(hostTwo, 'joined-game');
-        hostTwo.emit('join-game', { sessionId: sessionTwo.sessionId, username: 'HostTwo', isCreator: true });
+        hostTwo.emit('join-game', { sessionId: sessionTwo.sessionId, username: 'HostTwo', isCreator: true, hostToken: sessionTwo.hostToken });
         return joined;
       })(),
       (() => {
@@ -616,6 +699,7 @@ test('multiple hosts can start separate sessions at the same time', async () => 
           sessionId: sessions[index].sessionId,
           username: `Host${index + 1}`,
           isCreator: true,
+          hostToken: sessions[index].hostToken,
         });
         return joined;
       })
@@ -651,6 +735,7 @@ test('timer expiry reveals results even when nobody answers', async () => {
       sessionId: sessionDetails.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: sessionDetails.hostToken,
     });
     await hostJoined;
 
@@ -693,6 +778,7 @@ test('all-answered mode reveals results before the timer expires', async () => {
       sessionId: sessionDetails.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: sessionDetails.hostToken,
     });
     await hostJoined;
 
@@ -748,6 +834,7 @@ test('timer mode waits even after all connected players answer', async () => {
       sessionId: sessionDetails.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: sessionDetails.hostToken,
     });
     await hostJoined;
 
@@ -797,6 +884,7 @@ test('all-answered mode ignores disconnected players', async () => {
       sessionId: sessionDetails.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: sessionDetails.hostToken,
     });
     await hostJoined;
 
@@ -846,6 +934,7 @@ test('results payload counts submitted answers across players', async () => {
       sessionId: sessionDetails.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: sessionDetails.hostToken,
     });
     await hostJoined;
 
@@ -902,6 +991,7 @@ test('rejoining after timeout receives the results snapshot', async () => {
       sessionId: sessionDetails.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: sessionDetails.hostToken,
     });
     await hostJoined;
 
@@ -956,7 +1046,7 @@ test('rejoining an in-progress game receives only that session snapshot', async 
     await Promise.all([
       (() => {
         const joined = onceEventWithTimeout(hostOne, 'joined-game');
-        hostOne.emit('join-game', { sessionId: sessionOne.sessionId, username: 'HostOne', isCreator: true });
+        hostOne.emit('join-game', { sessionId: sessionOne.sessionId, username: 'HostOne', isCreator: true, hostToken: sessionOne.hostToken });
         return joined;
       })(),
       (() => {
@@ -966,7 +1056,7 @@ test('rejoining an in-progress game receives only that session snapshot', async 
       })(),
       (() => {
         const joined = onceEventWithTimeout(hostTwo, 'joined-game');
-        hostTwo.emit('join-game', { sessionId: sessionTwo.sessionId, username: 'HostTwo', isCreator: true });
+        hostTwo.emit('join-game', { sessionId: sessionTwo.sessionId, username: 'HostTwo', isCreator: true, hostToken: sessionTwo.hostToken });
         return joined;
       })(),
     ]);
@@ -1019,6 +1109,7 @@ test('deleting a session cleans stale socket index entries', async () => {
       sessionId: session.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: session.hostToken,
     });
     await joined;
 
@@ -1088,6 +1179,7 @@ test('room player cap rejects new players with a clear error', async () => {
       sessionId: session.sessionId,
       username: 'Host',
       isCreator: true,
+      hostToken: session.hostToken,
     });
     await hostJoined;
 

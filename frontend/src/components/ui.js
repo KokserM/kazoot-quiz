@@ -302,8 +302,12 @@ export const Spinner = styled.span.withConfig({
 `;
 
 export const AnswerButton = styled(Button)`
+  display: flex;
+  width: 100%;
+  min-width: 0;
   justify-content: flex-start;
-  align-items: stretch;
+  align-items: center;
+  gap: 12px;
   min-height: 84px;
   padding: 16px;
   border-radius: ${({ theme }) => theme.radii.md};
@@ -323,16 +327,18 @@ export const AnswerLetter = styled.span`
   flex: 0 0 auto;
   width: 30px;
   height: 30px;
-  margin-right: 12px;
   border-radius: ${({ theme }) => theme.radii.pill};
   background: rgba(255, 255, 255, 0.16);
   font-weight: 900;
 `;
 
 export const AnswerText = styled.span`
+  display: block;
   flex: 1;
   min-width: 0;
+  align-self: center;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 `;
 
 export const Card = styled(motion.article)`

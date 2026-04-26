@@ -191,6 +191,14 @@ export function getSubmittedAnswerMessage(revealTiming) {
     : '✓ Answer submitted. Waiting for the timer to finish.';
 }
 
+export function getHostAuthorityLabel(player) {
+  if (player?.hostAuthority === 'temporary' || player?.isTemporaryHost) {
+    return 'Temporary host';
+  }
+
+  return player?.isHost ? 'Host' : 'Player';
+}
+
 export function getCreateButtonLabel({ isLoading, isSignedInAiBlocked, user, hasOpenAI }) {
   if (isLoading) {
     return user && hasOpenAI ? 'Generating questions...' : 'Creating demo room...';
@@ -372,6 +380,7 @@ function CreatePage() {
         state: {
           username: username.trim(),
           isCreator: true,
+          hostToken: session.hostToken,
         },
       });
     } catch (requestError) {
@@ -807,7 +816,13 @@ function SessionHeader({ session, connectionStatus }) {
           <Pill $tone={connectionStatus === 'connected' ? 'success' : 'warning'}>
             {connectionStatus === 'connected' ? 'Live connection' : 'Reconnecting...'}
           </Pill>
-          {session.you?.isHost ? <Pill $tone="success">You are host</Pill> : null}
+          {session.you?.isHost ? (
+            <Pill $tone="success">
+              {session.you?.hostAuthority === 'temporary' || session.you?.isTemporaryHost
+                ? 'You are temporary host'
+                : 'You are host'}
+            </Pill>
+          ) : null}
         </div>
       </HeaderRow>
     </Card>
@@ -918,7 +933,9 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
           <MobileOnlyHint>
             {session.you?.isHost
               ? canStart
-                ? 'Only the host can start the game. You can kick off immediately or wait for more players to join.'
+                ? session.you?.hostAuthority === 'temporary' || session.you?.isTemporaryHost
+                  ? 'The host is offline, so you can keep the room moving until they return.'
+                  : 'Only the host can start the game. You can kick off immediately or wait for more players to join.'
                 : 'Only the host can start the game.'
               : 'Only the host can start the game. You will move into the quiz as soon as the host begins.'}
           </MobileOnlyHint>
@@ -939,7 +956,7 @@ function LobbyView({ session, onStartGame, onLeave, onForgetAndRetry }) {
               <HeaderRow style={{ marginBottom: 0 }}>
                 <div>
                   <strong>{player.username}</strong>
-                  <HelperText>{player.isHost ? 'Host' : 'Player'}</HelperText>
+                  <HelperText>{getHostAuthorityLabel(player)}</HelperText>
                 </div>
                 <Pill $tone={player.connected ? 'success' : 'warning'}>
                   {player.connected ? 'Connected' : 'Offline'}
@@ -1095,7 +1112,7 @@ function QuestionView({ question, revealTiming, onSubmitAnswer, onResyncSession,
               {selectionLabel ? (
                 <span
                   style={{
-                    marginLeft: 10,
+                    flex: '0 0 auto',
                     minWidth: selectionLabel === '✓' ? 28 : 'auto',
                     height: selectionLabel === '✓' ? 28 : 'auto',
                     display: 'inline-flex',
@@ -1213,7 +1230,7 @@ function ResultsView({ results, session, onNextQuestion }) {
                   <strong>
                     #{player.rank} {player.username}
                   </strong>
-                  <HelperText>{player.isHost ? 'Host' : 'Player'}</HelperText>
+                  <HelperText>{getHostAuthorityLabel(player)}</HelperText>
                 </div>
                 <strong>{player.score.toLocaleString()} pts</strong>
               </HeaderRow>
@@ -1402,11 +1419,12 @@ function SessionPage() {
       sessionId: normalizedSessionId,
       username,
       isCreator: Boolean(sessionState.isCreator),
+      hostToken: sessionState.hostToken || null,
       forceFresh:
         Boolean(savedSession?.username) &&
         savedSession.username.trim().toLowerCase() !== String(username).trim().toLowerCase(),
     });
-  }, [joinSession, normalizedSessionId, savedSession?.username, session?.sessionId, sessionState.isCreator, sessionState.username]);
+  }, [joinSession, normalizedSessionId, savedSession?.username, session?.sessionId, sessionState.hostToken, sessionState.isCreator, sessionState.username]);
 
   function handleManualJoin(username, forceFresh = false) {
     clearError();

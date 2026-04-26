@@ -28,6 +28,7 @@ function sortLeaderboard(players) {
       score: player.score,
       isHost: player.isHost,
       isTemporaryHost: player.isTemporaryHost,
+      hostAuthority: player.hostAuthority,
       connected: player.connected,
     }));
 }
@@ -53,7 +54,9 @@ class GameSession {
     this.updatedAt = this.createdAt;
     this.lastConnectedAt = this.createdAt;
     this.endedAt = null;
-    this.hostOwnerToken = null;
+    this.hostOwnerToken = randomUUID();
+    this.hostOwnerPlayerId = null;
+    this.temporaryHostPlayerId = null;
   }
 
   touch() {
@@ -75,6 +78,65 @@ class GameSession {
     return [...this.players.values()].find((player) => player.isHost) || null;
   }
 
+  isValidHostToken(hostToken) {
+    return typeof hostToken === 'string' && hostToken === this.hostOwnerToken;
+  }
+
+  getHostAuthority(player) {
+    if (!player) {
+      return 'none';
+    }
+
+    if (player.playerId === this.hostOwnerPlayerId) {
+      return 'owner';
+    }
+
+    if (player.playerId === this.temporaryHostPlayerId) {
+      return 'temporary';
+    }
+
+    return 'none';
+  }
+
+  canControlGame(player) {
+    return Boolean(player?.connected && ['owner', 'temporary'].includes(this.getHostAuthority(player)));
+  }
+
+  getEligibleTemporaryHost() {
+    return this.getConnectedPlayers()
+      .filter((player) => player.playerId !== this.hostOwnerPlayerId)
+      .sort((left, right) => left.joinedAt - right.joinedAt)[0] || null;
+  }
+
+  refreshHostAuthority({ preserveTemporaryHost = true } = {}) {
+    const owner = this.hostOwnerPlayerId ? this.players.get(this.hostOwnerPlayerId) : null;
+
+    if (owner?.connected) {
+      this.temporaryHostPlayerId = null;
+    } else if (!this.hostOwnerPlayerId) {
+      this.temporaryHostPlayerId = null;
+    } else {
+      const currentTemporaryHost = this.temporaryHostPlayerId
+        ? this.players.get(this.temporaryHostPlayerId)
+        : null;
+      const canKeepTemporaryHost =
+        preserveTemporaryHost &&
+        currentTemporaryHost?.connected &&
+        currentTemporaryHost.playerId !== this.hostOwnerPlayerId;
+
+      if (!canKeepTemporaryHost) {
+        this.temporaryHostPlayerId = this.getEligibleTemporaryHost()?.playerId || null;
+      }
+    }
+
+    this.players.forEach((player) => {
+      const hostAuthority = this.getHostAuthority(player);
+      player.hostAuthority = hostAuthority;
+      player.isTemporaryHost = hostAuthority === 'temporary';
+      player.isHost = player.connected && (hostAuthority === 'owner' || hostAuthority === 'temporary');
+    });
+  }
+
   getPlayerByToken(playerToken) {
     return [...this.players.values()].find((player) => player.playerToken === playerToken) || null;
   }
@@ -94,25 +156,21 @@ class GameSession {
     });
   }
 
-  addPlayer({ username, socketId, wantsHost = false }) {
+  addPlayer({ username, socketId, hostToken = null }) {
     const playerId = randomUUID();
     const playerToken = randomUUID();
-    const existingHost = this.getHost();
-    const shouldHost = wantsHost ? !existingHost : !existingHost;
-    const hostToken = shouldHost ? this.hostOwnerToken || randomUUID() : null;
+    const isOwnerHost = this.isValidHostToken(hostToken);
     const joinedAt = Date.now();
-    if (shouldHost && !this.hostOwnerToken) {
-      this.hostOwnerToken = hostToken;
-    }
 
     const player = {
       playerId,
       playerToken,
       username: username.trim(),
       score: 0,
-      isHost: shouldHost,
+      isHost: false,
       isTemporaryHost: false,
-      hostToken,
+      hostAuthority: 'none',
+      hostToken: isOwnerHost ? this.hostOwnerToken : null,
       connected: true,
       socketId,
       joinedAt,
@@ -120,29 +178,26 @@ class GameSession {
     };
 
     this.players.set(playerId, player);
+    if (isOwnerHost) {
+      this.hostOwnerPlayerId = playerId;
+    }
+    this.refreshHostAuthority({ preserveTemporaryHost: false });
     this.lastConnectedAt = Date.now();
     this.touch();
     return player;
   }
 
-  reconnectPlayer(player, socketId, username) {
+  reconnectPlayer(player, socketId, username, { hostToken = null } = {}) {
     player.connected = true;
     player.socketId = socketId;
     player.username = username?.trim() || player.username;
-    if (player.hostToken && player.hostToken === this.hostOwnerToken) {
-      this.players.forEach((candidate) => {
-        if (candidate.playerId !== player.playerId && candidate.isTemporaryHost) {
-          candidate.isHost = false;
-          candidate.isTemporaryHost = false;
-        }
-      });
-      player.isHost = true;
-      player.isTemporaryHost = false;
+
+    if (this.isValidHostToken(hostToken) || player.hostToken === this.hostOwnerToken) {
+      player.hostToken = this.hostOwnerToken;
+      this.hostOwnerPlayerId = player.playerId;
     }
-    if (!this.getHost()) {
-      player.isHost = true;
-      player.isTemporaryHost = player.hostToken !== this.hostOwnerToken;
-    }
+
+    this.refreshHostAuthority({ preserveTemporaryHost: false });
     this.lastConnectedAt = Date.now();
     this.touch();
     return player;
@@ -157,14 +212,7 @@ class GameSession {
     player.connected = false;
     player.socketId = null;
 
-    if (player.isHost) {
-      player.isHost = false;
-      const replacement = this.getConnectedPlayers()[0] || null;
-      if (replacement) {
-        replacement.isHost = true;
-        replacement.isTemporaryHost = replacement.hostToken !== this.hostOwnerToken;
-      }
-    }
+    this.refreshHostAuthority({ preserveTemporaryHost: false });
 
     this.touch();
     return player;
@@ -194,6 +242,7 @@ class GameSession {
         score: player.score,
         isHost: player.isHost,
         isTemporaryHost: player.isTemporaryHost,
+        hostAuthority: player.hostAuthority,
         connected: player.connected,
       })),
       leaderboard,
@@ -204,6 +253,7 @@ class GameSession {
             score: currentPlayer.score,
             isHost: currentPlayer.isHost,
             isTemporaryHost: currentPlayer.isTemporaryHost,
+            hostAuthority: currentPlayer.hostAuthority,
             connected: currentPlayer.connected,
           }
         : null,
