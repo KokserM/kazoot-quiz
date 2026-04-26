@@ -171,6 +171,18 @@ const ConfettiAnimation = () => {
   );
 };
 
+function formatCorrectAnswerCount(player) {
+  if (
+    typeof player?.correctAnswerCount !== 'number' ||
+    typeof player?.totalQuestions !== 'number' ||
+    player.totalQuestions <= 0
+  ) {
+    return '';
+  }
+
+  return `${player.correctAnswerCount}/${player.totalQuestions} correct`;
+}
+
 const Leaderboard = ({ leaderboard, onPlayAgain }) => {
   if (!leaderboard || leaderboard.length === 0) return null;
 
@@ -201,7 +213,7 @@ const Leaderboard = ({ leaderboard, onPlayAgain }) => {
           transition={{ delay: 0.4 }}
         >
           {topThree.map((player, index) => (
-            <PodiumPosition key={player.username} position={player.rank}>
+            <PodiumPosition key={player.playerId || `${player.rank}-${player.username}`} position={player.rank}>
               <PodiumPlayer
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -209,6 +221,9 @@ const Leaderboard = ({ leaderboard, onPlayAgain }) => {
               >
                 <PlayerName>{player.username || `Player ${player.rank}`}</PlayerName>
                 <PlayerScore>{player.score.toLocaleString()}</PlayerScore>
+                {formatCorrectAnswerCount(player) ? (
+                  <div style={{ fontSize: '0.85rem', opacity: 0.82 }}>{formatCorrectAnswerCount(player)}</div>
+                ) : null}
               </PodiumPlayer>
               
               <PodiumStep
@@ -234,7 +249,7 @@ const Leaderboard = ({ leaderboard, onPlayAgain }) => {
         >
           {restOfPlayers.map((player, index) => (
             <LeaderboardItem
-              key={player.username}
+              key={player.playerId || `${player.rank}-${player.username}`}
               initial={{ opacity: 0, x: -50 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 1.4 + index * 0.1 }}
@@ -243,7 +258,12 @@ const Leaderboard = ({ leaderboard, onPlayAgain }) => {
                 <RankNumber>{player.rank}</RankNumber>
                 <PlayerName>{player.username || `Player ${player.rank}`}</PlayerName>
               </RankInfo>
-              <PlayerScore>{player.score.toLocaleString()} pts</PlayerScore>
+              <div style={{ textAlign: 'right' }}>
+                <PlayerScore>{player.score.toLocaleString()} pts</PlayerScore>
+                {formatCorrectAnswerCount(player) ? (
+                  <div style={{ fontSize: '0.85rem', opacity: 0.72 }}>{formatCorrectAnswerCount(player)}</div>
+                ) : null}
+              </div>
             </LeaderboardItem>
           ))}
         </RestOfLeaderboard>

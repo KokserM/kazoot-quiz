@@ -4,6 +4,8 @@ import App, {
   getCreateButtonLabel,
   getCreateLoadingMessage,
   getCreateLoadingMessages,
+  formatCorrectAnswerCount,
+  getHostNameAutofill,
   getHostAuthorityLabel,
   getRevealTimingLabel,
   getRemainingQuestionMs,
@@ -139,6 +141,12 @@ test('join-game payload omits null optional tokens while preserving real reconne
   });
 });
 
+test('formats final standings correct-answer count when available', () => {
+  expect(formatCorrectAnswerCount({ correctAnswerCount: 7, totalQuestions: 10 })).toBe('7/10 correct');
+  expect(formatCorrectAnswerCount({ correctAnswerCount: 0, totalQuestions: 10 })).toBe('0/10 correct');
+  expect(formatCorrectAnswerCount({ score: 1200 })).toBe('');
+});
+
 test('formats reveal timing labels and submitted answer copy', () => {
   expect(getRevealTimingLabel('all_answered')).toBe('Reveal: everyone answered');
   expect(getRevealTimingLabel('timer')).toBe('Reveal: full timer');
@@ -193,6 +201,19 @@ test('formats monthly AI games left copy', () => {
       credits: 20,
     })
   ).toBe('3 free this month · 20 paid AI games left');
+});
+
+test('prefills host name from Google profile until user edits it', () => {
+  const user = {
+    email: 'host@example.com',
+    user_metadata: {
+      full_name: 'Alex Host',
+    },
+  };
+
+  expect(getHostNameAutofill({ user, currentUsername: '', hasEditedUsername: false })).toBe('Alex Host');
+  expect(getHostNameAutofill({ user, currentUsername: 'Custom Host', hasEditedUsername: true })).toBe('Custom Host');
+  expect(getHostNameAutofill({ user: null, currentUsername: '', hasEditedUsername: false })).toBe('');
 });
 
 test('stored player sessions are scoped by username and can be cleared', () => {

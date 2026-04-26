@@ -218,6 +218,17 @@ const Results = ({ questionResults, onNextQuestion, isAdmin = false }) => {
 
   const answerLabels = ['A', 'B', 'C', 'D'];
   const answerColors = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#a8e6cf'];
+  const formatCorrectAnswerCount = (player) => {
+    if (
+      typeof player?.correctAnswerCount !== 'number' ||
+      typeof player?.totalQuestions !== 'number' ||
+      player.totalQuestions <= 0
+    ) {
+      return '';
+    }
+
+    return `${player.correctAnswerCount}/${player.totalQuestions} correct`;
+  };
 
   const totalAnswers = answerStats.reduce((sum, count) => sum + count, 0);
 
@@ -315,7 +326,7 @@ const Results = ({ questionResults, onNextQuestion, isAdmin = false }) => {
         <LeaderboardTitle>🏆 Current Leaderboard</LeaderboardTitle>
         {leaderboard.slice(0, 5).map((player, index) => (
           <LeaderboardItem
-            key={player.username}
+            key={player.playerId || `${player.rank}-${player.username}`}
             rank={player.rank}
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -327,7 +338,12 @@ const Results = ({ questionResults, onNextQuestion, isAdmin = false }) => {
               </RankBadge>
               <PlayerName>{player.username || `Player ${player.rank}`}</PlayerName>
             </PlayerInfo>
-            <Score>{player.score.toLocaleString()} pts</Score>
+            <div style={{ textAlign: 'right' }}>
+              <Score>{player.score.toLocaleString()} pts</Score>
+              {formatCorrectAnswerCount(player) ? (
+                <div style={{ fontSize: '0.85rem', color: '#666' }}>{formatCorrectAnswerCount(player)}</div>
+              ) : null}
+            </div>
           </LeaderboardItem>
         ))}
       </LeaderboardContainer>

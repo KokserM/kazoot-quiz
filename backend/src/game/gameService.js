@@ -333,10 +333,6 @@ class GameService {
           throw new Error('Saved player token does not match this player name');
         }
 
-        if (session.hasUsernameConflict(payload.username, player.playerId)) {
-          throw new Error('That name is already in use');
-        }
-
         player = session.reconnectPlayer(player, socket.id, payload.username, {
           hostToken: payload.hostToken,
         });
@@ -356,10 +352,6 @@ class GameService {
 
       if (session.players.size >= this.config.maxPlayersPerSession) {
         throw new Error('This room is full.');
-      }
-
-      if (session.hasUsernameConflict(payload.username)) {
-        throw new Error('That name is already in use');
       }
 
       player = session.addPlayer({

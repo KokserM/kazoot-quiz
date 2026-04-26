@@ -454,6 +454,117 @@ test('player tokens allow reconnecting to the same seat', async () => {
   }
 });
 
+test('different players can use the same display name in one room', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, 'Video Games');
+    const firstSocket = connectClient(runtime.baseUrl);
+    const secondSocket = connectClient(runtime.baseUrl);
+
+    const firstJoin = onceEventWithTimeout(firstSocket, 'joined-game');
+    firstSocket.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Martin',
+    });
+    const firstPayload = await firstJoin;
+
+    const secondJoin = onceEventWithTimeout(secondSocket, 'joined-game');
+    secondSocket.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Martin',
+    });
+    const secondPayload = await secondJoin;
+
+    const matchingPlayers = secondPayload.players.filter((player) => player.username === 'Martin');
+    assert.equal(matchingPlayers.length, 2);
+    assert.notEqual(firstPayload.playerId, secondPayload.playerId);
+    assert.notEqual(matchingPlayers[0].playerId, matchingPlayers[1].playerId);
+
+    firstSocket.disconnect();
+    secondSocket.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('same-name players remain distinct in final standings and can reconnect', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const session = await createSession(runtime.baseUrl, 'Video Games');
+    const firstSocket = connectClient(runtime.baseUrl);
+    const secondSocket = connectClient(runtime.baseUrl);
+
+    const firstJoin = onceEventWithTimeout(firstSocket, 'joined-game');
+    firstSocket.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Alex',
+    });
+    const firstPayload = await firstJoin;
+
+    const secondJoin = onceEventWithTimeout(secondSocket, 'joined-game');
+    secondSocket.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Alex',
+    });
+    const secondPayload = await secondJoin;
+
+    const storedSession = runtime.store.getSession(session.sessionId);
+    const firstPlayer = storedSession.players.get(firstPayload.playerId);
+    const secondPlayer = storedSession.players.get(secondPayload.playerId);
+    firstPlayer.score = 1200;
+    firstPlayer.answers = {
+      0: { isCorrect: true, points: 1200 },
+      1: { isCorrect: false, points: 0 },
+    };
+    secondPlayer.score = 800;
+    secondPlayer.answers = {
+      0: { isCorrect: true, points: 500 },
+      1: { isCorrect: true, points: 300 },
+    };
+    storedSession.gameState = 'ended';
+    storedSession.endedAt = Date.now();
+    storedSession.touch();
+
+    firstSocket.disconnect();
+    await delay(50);
+
+    const reconnectSocket = connectClient(runtime.baseUrl);
+    const rejoinPromise = onceEventWithTimeout(reconnectSocket, 'joined-game');
+    const gameEndPromise = onceEventWithTimeout(reconnectSocket, 'game-end');
+    reconnectSocket.emit('join-game', {
+      sessionId: session.sessionId,
+      username: 'Alex',
+      playerToken: firstPayload.playerToken,
+    });
+
+    const rejoinedPayload = await rejoinPromise;
+    const finalPayload = await gameEndPromise;
+    const alexRows = finalPayload.leaderboard.filter((player) => player.username === 'Alex');
+
+    assert.equal(rejoinedPayload.reconnected, true);
+    assert.equal(rejoinedPayload.playerId, firstPayload.playerId);
+    assert.equal(alexRows.length, 2);
+    assert.notEqual(alexRows[0].playerId, alexRows[1].playerId);
+    assert.equal(alexRows[0].playerId, firstPayload.playerId);
+    assert.equal(alexRows[0].score, 1200);
+    assert.equal(alexRows[0].correctAnswerCount, 1);
+    assert.equal(alexRows[0].answeredCount, 2);
+    assert.equal(alexRows[0].totalQuestions, storedSession.questions.length);
+    assert.equal(alexRows[1].playerId, secondPayload.playerId);
+    assert.equal(alexRows[1].score, 800);
+    assert.equal(alexRows[1].correctAnswerCount, 2);
+    assert.equal(alexRows[1].answeredCount, 2);
+    assert.equal(alexRows[1].totalQuestions, storedSession.questions.length);
+
+    secondSocket.disconnect();
+    reconnectSocket.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
 test('saved player token cannot be reused under a different name after the game starts', async () => {
   const runtime = await startTestServer();
 

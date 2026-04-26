@@ -12,7 +12,16 @@ function generateSessionId() {
   return code;
 }
 
-function sortLeaderboard(players) {
+function getAnswerStats(player, totalQuestions) {
+  const answers = Object.values(player.answers || {});
+  return {
+    answeredCount: answers.length,
+    correctAnswerCount: answers.filter((answer) => answer?.isCorrect === true).length,
+    totalQuestions,
+  };
+}
+
+function buildLeaderboard(players, totalQuestions) {
   return [...players]
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -21,16 +30,20 @@ function sortLeaderboard(players) {
 
       return left.joinedAt - right.joinedAt;
     })
-    .map((player, index) => ({
-      rank: index + 1,
-      playerId: player.playerId,
-      username: player.username,
-      score: player.score,
-      isHost: player.isHost,
-      isTemporaryHost: player.isTemporaryHost,
-      hostAuthority: player.hostAuthority,
-      connected: player.connected,
-    }));
+    .map((player, index) => {
+      const answerStats = getAnswerStats(player, totalQuestions);
+      return {
+        rank: index + 1,
+        playerId: player.playerId,
+        username: player.username,
+        score: player.score,
+        ...answerStats,
+        isHost: player.isHost,
+        isTemporaryHost: player.isTemporaryHost,
+        hostAuthority: player.hostAuthority,
+        connected: player.connected,
+      };
+    });
 }
 
 class GameSession {
@@ -145,17 +158,6 @@ class GameSession {
     return [...this.players.values()].find((player) => player.socketId === socketId) || null;
   }
 
-  hasUsernameConflict(username, playerIdToIgnore = null) {
-    const normalized = username.trim().toLowerCase();
-    return [...this.players.values()].some((player) => {
-      if (player.playerId === playerIdToIgnore) {
-        return false;
-      }
-
-      return player.username.trim().toLowerCase() === normalized;
-    });
-  }
-
   addPlayer({ username, socketId, hostToken = null }) {
     const playerId = randomUUID();
     const playerToken = randomUUID();
@@ -219,7 +221,8 @@ class GameSession {
   }
 
   toSessionSummary(playerId = null) {
-    const leaderboard = sortLeaderboard(this.players.values());
+    const totalQuestions = this.questions.length;
+    const leaderboard = buildLeaderboard(this.players.values(), totalQuestions);
     const currentPlayer = playerId ? this.players.get(playerId) : null;
 
     return {

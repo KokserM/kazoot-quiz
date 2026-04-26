@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { fetchDemoTopics, createSession as requestCreateSession } from './lib/api';
 import { loadPlayerSession } from './lib/storage';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
-import { AccountStatusBar } from './components/AccountStatusBar';
+import { AccountStatusBar, getDisplayName } from './components/AccountStatusBar';
 import { GameProvider, useGame } from './providers/GameProvider';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { theme } from './styles/theme';
@@ -230,6 +230,26 @@ export function getCreateLoadingMessages({ user, hasOpenAI }) {
       ];
 }
 
+export function getHostNameAutofill({ user, currentUsername = '', hasEditedUsername = false }) {
+  if (hasEditedUsername) {
+    return currentUsername;
+  }
+
+  return user ? getDisplayName(user) : currentUsername;
+}
+
+export function formatCorrectAnswerCount(player) {
+  if (
+    typeof player?.correctAnswerCount !== 'number' ||
+    typeof player?.totalQuestions !== 'number' ||
+    player.totalQuestions <= 0
+  ) {
+    return '';
+  }
+
+  return `${player.correctAnswerCount}/${player.totalQuestions} correct`;
+}
+
 function MarketingHome() {
   const stats = [
     ['10-question games', 'Short enough for a break, long enough to feel like a real match.'],
@@ -305,6 +325,7 @@ function CreatePage() {
   const { accessToken, authError, isConfigured, refreshUsage, signIn, usage, user } = useAuth();
   const [hostMode, setHostMode] = useState(null);
   const [username, setUsername] = useState('');
+  const [hasEditedUsername, setHasEditedUsername] = useState(false);
   const [topic, setTopic] = useState('');
   const [language, setLanguage] = useState('English');
   const [questionTimeLimitMs, setQuestionTimeLimitMs] = useState('20000');
@@ -362,6 +383,13 @@ function CreatePage() {
 
     return () => clearInterval(intervalId);
   }, [isLoading]);
+
+  useEffect(() => {
+    const nextUsername = getHostNameAutofill({ user, currentUsername: username, hasEditedUsername });
+    if (nextUsername !== username) {
+      setUsername(nextUsername);
+    }
+  }, [hasEditedUsername, user, username]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -518,8 +546,11 @@ function CreatePage() {
                 <Input
                   id="host-name"
                   value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="Martin"
+                  onChange={(event) => {
+                    setHasEditedUsername(true);
+                    setUsername(event.target.value);
+                  }}
+                  placeholder={user ? getDisplayName(user) : 'Your name'}
                   disabled={isLoading}
                   required
                 />
@@ -1263,7 +1294,10 @@ function GameEndView({ leaderboard, onLeave }) {
               <strong style={{ fontSize: '1.25rem' }}>
                 #{player.rank} {player.username}
               </strong>
-              <div style={{ marginTop: 8, color: theme.colors.textMuted }}>{player.score.toLocaleString()} pts</div>
+              <Cluster style={{ marginTop: 12 }}>
+                <StatChip>{player.score.toLocaleString()} pts</StatChip>
+                {formatCorrectAnswerCount(player) ? <StatChip>{formatCorrectAnswerCount(player)}</StatChip> : null}
+              </Cluster>
             </Card>
           ))}
         </Grid>
@@ -1276,7 +1310,10 @@ function GameEndView({ leaderboard, onLeave }) {
                   <strong>
                     #{player.rank} {player.username}
                   </strong>
-                  <strong>{player.score.toLocaleString()} pts</strong>
+                  <Cluster justify="flex-end">
+                    {formatCorrectAnswerCount(player) ? <StatChip>{formatCorrectAnswerCount(player)}</StatChip> : null}
+                    <strong>{player.score.toLocaleString()} pts</strong>
+                  </Cluster>
                 </HeaderRow>
               </Card>
             ))}
