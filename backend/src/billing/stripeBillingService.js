@@ -5,27 +5,43 @@ const PRICE_CATALOG = {
     envKey: 'stripePlusPriceId',
     mode: 'subscription',
     tier: 'plus',
-    credits: 100,
+    credits: 20,
   },
   pro_monthly: {
     envKey: 'stripeProPriceId',
     mode: 'subscription',
     tier: 'pro',
-    credits: 350,
+    credits: 75,
   },
-  credits_100: {
-    envKey: 'stripeCreditPack100PriceId',
+  credits_20: {
+    envKey: 'stripeCreditPack20PriceId',
     mode: 'payment',
     tier: 'credit_pack',
-    credits: 100,
+    credits: 20,
   },
-  credits_250: {
-    envKey: 'stripeCreditPack250PriceId',
+  credits_60: {
+    envKey: 'stripeCreditPack60PriceId',
     mode: 'payment',
     tier: 'credit_pack',
-    credits: 250,
+    credits: 60,
+  },
+  credits_150: {
+    envKey: 'stripeCreditPack150PriceId',
+    mode: 'payment',
+    tier: 'credit_pack',
+    credits: 150,
   },
 };
+
+function addMonthsIso(dateInput, months) {
+  const date = dateInput ? new Date(dateInput) : new Date();
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString();
+}
+
+function stripeTimestampToIso(timestamp) {
+  return timestamp ? new Date(timestamp * 1000).toISOString() : null;
+}
 
 class StripeBillingService {
   constructor({ config, aiUsageService }) {
@@ -170,9 +186,11 @@ class StripeBillingService {
       await this.aiUsageService.grantCredits({
         userId,
         credits: plan.credits,
-        reason: 'stripe_credit_pack',
+        reason: 'stripe_ai_game_pack',
         sourceId: session.id,
-        metadata: { planId },
+        grantType: 'pack',
+        expiresAt: addMonthsIso(new Date(), 12),
+        metadata: { planId, expiresAfter: '12_months' },
       });
     }
   }
@@ -214,9 +232,17 @@ class StripeBillingService {
     await this.aiUsageService.grantCredits({
       userId,
       credits: plan.credits,
-      reason: 'stripe_subscription_credits',
+      reason: 'stripe_subscription_ai_games',
       sourceId: invoice.id,
-      metadata: { planId, subscriptionId },
+      grantType: 'subscription',
+      expiresAt: addMonthsIso(stripeTimestampToIso(subscription.current_period_end), 1),
+      metadata: {
+        planId,
+        subscriptionId,
+        currentPeriodStart: stripeTimestampToIso(subscription.current_period_start),
+        currentPeriodEnd: stripeTimestampToIso(subscription.current_period_end),
+        rollover: 'one_extra_billing_period',
+      },
     });
 
     await this.aiUsageService.upsertSubscription({
@@ -225,9 +251,7 @@ class StripeBillingService {
       stripeSubscriptionId: subscription.id,
       tier: plan.tier,
       status: subscription.status,
-      currentPeriodEnd: subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000).toISOString()
-        : null,
+      currentPeriodEnd: stripeTimestampToIso(subscription.current_period_end),
     });
   }
 
@@ -250,9 +274,7 @@ class StripeBillingService {
       stripeSubscriptionId: subscription.id,
       tier: event.type === 'customer.subscription.deleted' ? 'free' : plan.tier,
       status: subscription.status,
-      currentPeriodEnd: subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000).toISOString()
-        : null,
+      currentPeriodEnd: stripeTimestampToIso(subscription.current_period_end),
     });
   }
 }

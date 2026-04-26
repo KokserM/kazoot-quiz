@@ -5,6 +5,7 @@ const { io: createClient } = require('socket.io-client');
 const { createServer } = require('../src/createServer');
 const demoQuestions = require('../demoQuestions');
 const { sanitizeQuizInput } = require('../src/security/promptGuard');
+const { PRICE_CATALOG } = require('../src/billing/stripeBillingService');
 
 async function startTestServer() {
   const runtime = createServer();
@@ -207,12 +208,12 @@ test('session stores the host-selected reveal timing mode', async () => {
   }
 });
 
-test('ai generation uses free daily quota before requiring paid credits', async () => {
+test('ai generation uses free monthly quota before requiring paid AI games', async () => {
   const runtime = await startTestServer();
-  const previousFreeLimit = runtime.gameService.config.freeAiGamesPerDay;
+  const previousFreeLimit = runtime.gameService.config.freeAiGamesPerMonth;
 
   try {
-    runtime.gameService.config.freeAiGamesPerDay = 1;
+    runtime.gameService.config.freeAiGamesPerMonth = 1;
     stubOpenAiQuiz(runtime);
 
     const firstSession = await runtime.gameService.createSession(
@@ -227,20 +228,20 @@ test('ai generation uses free daily quota before requiring paid credits', async 
           { topic: '90s Movies', language: 'English' },
           { user: fakeUser, ipAddress: '127.0.0.1' }
         ),
-      /out of AI game credits/i
+      /out of AI games/i
     );
   } finally {
-    runtime.gameService.config.freeAiGamesPerDay = previousFreeLimit;
+    runtime.gameService.config.freeAiGamesPerMonth = previousFreeLimit;
     await runtime.close();
   }
 });
 
-test('paid credits are spent after free quota is exhausted', async () => {
+test('paid AI game grants are spent after free monthly quota is exhausted', async () => {
   const runtime = await startTestServer();
-  const previousFreeLimit = runtime.gameService.config.freeAiGamesPerDay;
+  const previousFreeLimit = runtime.gameService.config.freeAiGamesPerMonth;
 
   try {
-    runtime.gameService.config.freeAiGamesPerDay = 0;
+    runtime.gameService.config.freeAiGamesPerMonth = 0;
     stubOpenAiQuiz(runtime);
     await runtime.aiUsageService.grantCredits({
       userId: fakeUser.id,
@@ -257,8 +258,9 @@ test('paid credits are spent after free quota is exhausted', async () => {
 
     assert.equal(session.questionSource, 'openai');
     assert.equal(usage.credits, 1);
+    assert.equal(usage.aiGamesLeft, 1);
   } finally {
-    runtime.gameService.config.freeAiGamesPerDay = previousFreeLimit;
+    runtime.gameService.config.freeAiGamesPerMonth = previousFreeLimit;
     await runtime.close();
   }
 });
@@ -314,13 +316,57 @@ test('payment records are idempotent before granting credits', async () => {
   }
 });
 
-test('parallel AI reservations count reserved free quota and cannot overspend credits', async () => {
+test('subscription rollover and pack expiry affect available paid AI games', async () => {
   const runtime = await startTestServer();
-  const previousFreeLimit = runtime.aiUsageService.config.freeAiGamesPerDay;
+  const userId = '00000000-0000-4000-8000-000000000077';
+
+  try {
+    await runtime.aiUsageService.grantCredits({
+      userId,
+      credits: 20,
+      reason: 'test_subscription_grant',
+      sourceId: 'sub-grant-current',
+      grantType: 'subscription',
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    await runtime.aiUsageService.grantCredits({
+      userId,
+      credits: 60,
+      reason: 'test_pack_grant',
+      sourceId: 'pack-grant',
+      grantType: 'pack',
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    await runtime.aiUsageService.grantCredits({
+      userId,
+      credits: 75,
+      reason: 'test_expired_subscription_grant',
+      sourceId: 'sub-grant-expired',
+      grantType: 'subscription',
+      expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    assert.equal(await runtime.aiUsageService.getCreditBalance(userId), 80);
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('stripe catalog exposes new AI game plans and pack sizes', () => {
+  assert.equal(PRICE_CATALOG.plus_monthly.credits, 20);
+  assert.equal(PRICE_CATALOG.pro_monthly.credits, 75);
+  assert.equal(PRICE_CATALOG.credits_20.credits, 20);
+  assert.equal(PRICE_CATALOG.credits_60.credits, 60);
+  assert.equal(PRICE_CATALOG.credits_150.credits, 150);
+});
+
+test('parallel AI reservations count reserved free quota and cannot overspend paid AI games', async () => {
+  const runtime = await startTestServer();
+  const previousFreeLimit = runtime.aiUsageService.config.freeAiGamesPerMonth;
   const previousCreditCost = runtime.aiUsageService.config.aiCreditCostPerQuiz;
 
   try {
-    runtime.aiUsageService.config.freeAiGamesPerDay = 1;
+    runtime.aiUsageService.config.freeAiGamesPerMonth = 1;
     runtime.aiUsageService.config.aiCreditCostPerQuiz = 1;
 
     const user = {
@@ -363,10 +409,10 @@ test('parallel AI reservations count reserved free quota and cannot overspend cr
     const rejected = reservations.filter((result) => result.status === 'rejected');
     assert.equal(fulfilled.length, 2);
     assert.equal(rejected.length, 1);
-    assert.match(rejected[0].reason.message, /out of AI game credits/i);
+    assert.match(rejected[0].reason.message, /out of AI games/i);
     assert.equal(await runtime.aiUsageService.getCreditBalance(user.id), 0);
   } finally {
-    runtime.aiUsageService.config.freeAiGamesPerDay = previousFreeLimit;
+    runtime.aiUsageService.config.freeAiGamesPerMonth = previousFreeLimit;
     runtime.aiUsageService.config.aiCreditCostPerQuiz = previousCreditCost;
     await runtime.close();
   }

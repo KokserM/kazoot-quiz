@@ -22,6 +22,19 @@ create table if not exists public.usage_ledger (
   unique (user_id, source_id, reason)
 );
 
+create table if not exists public.credit_grants (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  source_id text not null,
+  grant_type text not null check (grant_type in ('subscription', 'pack', 'manual')),
+  original_credits integer not null check (original_credits > 0),
+  remaining_credits integer not null check (remaining_credits >= 0),
+  expires_at timestamptz,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique (user_id, source_id, grant_type)
+);
+
 create table if not exists public.quiz_generations (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete set null,
@@ -74,6 +87,7 @@ create table if not exists public.quiz_cache (
 );
 
 create index if not exists usage_ledger_user_created_idx on public.usage_ledger(user_id, created_at desc);
+create index if not exists credit_grants_user_expiry_idx on public.credit_grants(user_id, expires_at asc nulls last, created_at asc);
 create index if not exists quiz_generations_user_created_idx on public.quiz_generations(user_id, created_at desc);
 create index if not exists quiz_generations_user_status_created_idx on public.quiz_generations(user_id, status, created_at desc);
 create index if not exists quiz_generations_user_source_status_created_idx on public.quiz_generations(user_id, source, status, created_at desc);
@@ -85,27 +99,112 @@ alter table public.quiz_generations
 create index if not exists quiz_generations_ip_status_created_idx on public.quiz_generations(ip_address, status, created_at desc);
 create index if not exists payments_stripe_object_idx on public.payments(stripe_object_id);
 
+insert into public.credit_grants (
+  user_id,
+  source_id,
+  grant_type,
+  original_credits,
+  remaining_credits,
+  expires_at,
+  metadata
+)
+select
+  user_id,
+  'legacy-usage-ledger-balance',
+  'manual',
+  sum(delta)::integer,
+  sum(delta)::integer,
+  null,
+  jsonb_build_object(
+    'migration', 'usage_ledger_net_balance',
+    'note', 'Backfilled from pre-grant paid AI-game balance.'
+  )
+from public.usage_ledger
+group by user_id
+having sum(delta) > 0
+on conflict (user_id, source_id, grant_type) do nothing;
+
 alter table public.profiles enable row level security;
 alter table public.usage_ledger enable row level security;
+alter table public.credit_grants enable row level security;
 alter table public.quiz_generations enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.payments enable row level security;
 alter table public.quiz_cache enable row level security;
 
-create policy "profiles_select_own" on public.profiles
-  for select using (auth.uid() = id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_select_own'
+  ) then
+    create policy "profiles_select_own" on public.profiles
+      for select using (auth.uid() = id);
+  end if;
+end $$;
 
-create policy "profiles_update_own" on public.profiles
-  for update using (auth.uid() = id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_update_own'
+  ) then
+    create policy "profiles_update_own" on public.profiles
+      for update using (auth.uid() = id);
+  end if;
+end $$;
 
-create policy "usage_ledger_select_own" on public.usage_ledger
-  for select using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'usage_ledger' and policyname = 'usage_ledger_select_own'
+  ) then
+    create policy "usage_ledger_select_own" on public.usage_ledger
+      for select using (auth.uid() = user_id);
+  end if;
+end $$;
 
-create policy "quiz_generations_select_own" on public.quiz_generations
-  for select using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'credit_grants' and policyname = 'credit_grants_select_own'
+  ) then
+    create policy "credit_grants_select_own" on public.credit_grants
+      for select using (auth.uid() = user_id);
+  end if;
+end $$;
 
-create policy "subscriptions_select_own" on public.subscriptions
-  for select using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'quiz_generations' and policyname = 'quiz_generations_select_own'
+  ) then
+    create policy "quiz_generations_select_own" on public.quiz_generations
+      for select using (auth.uid() = user_id);
+  end if;
+end $$;
 
-create policy "payments_select_own" on public.payments
-  for select using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'subscriptions' and policyname = 'subscriptions_select_own'
+  ) then
+    create policy "subscriptions_select_own" on public.subscriptions
+      for select using (auth.uid() = user_id);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'payments' and policyname = 'payments_select_own'
+  ) then
+    create policy "payments_select_own" on public.payments
+      for select using (auth.uid() = user_id);
+  end if;
+end $$;

@@ -131,10 +131,12 @@ export function getInitials(user) {
 
 export function getUsageSummaryLabel(usage) {
   if (!usage) {
-    return 'Loading credits...';
+    return 'Loading AI games...';
   }
 
-  return `${usage.freeRemainingToday ?? 0} free today · ${usage.credits ?? 0} credits`;
+  return `${usage.freeRemainingThisMonth ?? usage.freeRemainingToday ?? 0} free this month · ${
+    usage.credits ?? 0
+  } paid AI games left`;
 }
 
 export function AccountStatusBar({ dense = false, mode = 'default' }) {
@@ -156,7 +158,7 @@ export function AccountStatusBar({ dense = false, mode = 'default' }) {
           </>
         ) : user ? (
           <>
-            <Pill $tone={(usage?.freeRemainingToday ?? 0) > 0 || (usage?.credits ?? 0) > 0 ? 'success' : 'warning'}>
+            <Pill $tone={(usage?.freeRemainingThisMonth ?? usage?.freeRemainingToday ?? 0) > 0 || (usage?.credits ?? 0) > 0 ? 'success' : 'warning'}>
               {getUsageSummaryLabel(usage)}
             </Pill>
             <UserPill to="/account" aria-label="Open account and billing">
@@ -182,7 +184,7 @@ export function AccountStatusBar({ dense = false, mode = 'default' }) {
           </>
         ) : (
           <>
-            <BenefitText>3 free AI games per day for hosts</BenefitText>
+            <BenefitText>3 free AI games per month for hosts</BenefitText>
             <Button type="button" variant="secondary" compact disabled={!isConfigured} onClick={signIn}>
               Sign in for AI games
             </Button>

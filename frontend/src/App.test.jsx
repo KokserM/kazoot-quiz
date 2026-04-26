@@ -14,6 +14,7 @@ import App, {
 } from './App';
 import { buildJoinGamePayload, getSocketTransports } from './providers/GameProvider';
 import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlayerSession } from './lib/storage';
+import { getUsageSummaryLabel } from './components/AccountStatusBar';
 
 afterEach(() => {
   localStorage.clear();
@@ -176,6 +177,22 @@ test('formats create loading copy for AI and demo sessions', () => {
   ).toBe('Creating demo room...');
   expect(getCreateLoadingMessage({ user: null, hasOpenAI: true })).toBe(demoMessages[0]);
   expect(demoMessages).toContain('Loading built-in questions...');
+});
+
+test('formats monthly AI games left copy', () => {
+  expect(getCreateButtonLabel({
+    isLoading: false,
+    isSignedInAiBlocked: true,
+    user: { id: 'user-1' },
+    hasOpenAI: true,
+  })).toBe('Add AI games to create AI game');
+
+  expect(
+    getUsageSummaryLabel({
+      freeRemainingThisMonth: 3,
+      credits: 20,
+    })
+  ).toBe('3 free this month · 20 paid AI games left');
 });
 
 test('stored player sessions are scoped by username and can be cleared', () => {

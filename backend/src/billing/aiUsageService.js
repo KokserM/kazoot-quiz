@@ -18,6 +18,16 @@ function startOfMonthIso(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
+function addMonthsIso(dateInput, months) {
+  const date = dateInput ? new Date(dateInput) : new Date();
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString();
+}
+
+function isGrantAvailable(grant, nowIso = new Date().toISOString()) {
+  return grant.remainingCredits > 0 && (!grant.expiresAt || grant.expiresAt > nowIso);
+}
+
 function estimateOpenAiCost({ inputTokens = 0, outputTokens = 0, config }) {
   return (
     (inputTokens / 1_000_000) * config.openAiEstInputCostPer1M +
@@ -39,6 +49,7 @@ class AiUsageService {
         : null;
     this.memory = {
       ledger: [],
+      creditGrants: [],
       generations: [],
       payments: new Set(),
       subscriptions: new Map(),
@@ -59,6 +70,17 @@ class AiUsageService {
       return 0;
     }
 
+    const grants = await this.getCreditGrants(userId);
+    if (grants.length > 0) {
+      return grants
+        .filter((grant) => isGrantAvailable(grant))
+        .reduce((total, grant) => total + grant.remainingCredits, 0);
+    }
+
+    return this.getLegacyCreditBalance(userId);
+  }
+
+  async getLegacyCreditBalance(userId) {
     if (!this.client) {
       return this.memory.ledger
         .filter((entry) => entry.userId === userId)
@@ -160,29 +182,38 @@ class AiUsageService {
   async getUsageSummary(userId) {
     if (!userId) {
       return {
-        freeLimit: this.config.freeAiGamesPerDay,
+        freeLimit: this.config.freeAiGamesPerMonth,
+        freeLimitMonthly: this.config.freeAiGamesPerMonth,
         freeUsedToday: 0,
+        freeUsedThisMonth: 0,
         freeRemainingToday: 0,
+        freeRemainingThisMonth: 0,
         credits: 0,
+        aiGamesLeft: 0,
         tier: 'anonymous',
         subscriptionStatus: 'none',
         recentGenerations: [],
       };
     }
 
-    const [freeUsedToday, credits, subscription] = await Promise.all([
-      this.countSuccessfulGenerationsSince(userId, startOfTodayIso()),
+    const [freeUsedThisMonth, credits, subscription] = await Promise.all([
+      this.countSuccessfulGenerationsSince(userId, startOfMonthIso()),
       this.getCreditBalance(userId),
       this.getSubscription(userId),
     ]);
 
     const recentGenerations = await this.getRecentGenerations(userId);
+    const freeRemainingThisMonth = Math.max(0, this.config.freeAiGamesPerMonth - freeUsedThisMonth);
 
     return {
-      freeLimit: this.config.freeAiGamesPerDay,
-      freeUsedToday,
-      freeRemainingToday: Math.max(0, this.config.freeAiGamesPerDay - freeUsedToday),
+      freeLimit: this.config.freeAiGamesPerMonth,
+      freeLimitMonthly: this.config.freeAiGamesPerMonth,
+      freeUsedToday: freeUsedThisMonth,
+      freeUsedThisMonth,
+      freeRemainingToday: freeRemainingThisMonth,
+      freeRemainingThisMonth,
       credits,
+      aiGamesLeft: freeRemainingThisMonth + credits,
       tier: subscription?.tier || 'free',
       subscriptionStatus: subscription?.status || 'inactive',
       currentPeriodEnd: subscription?.currentPeriodEnd || null,
@@ -258,13 +289,13 @@ class AiUsageService {
     await this.enforceRateLimits({ userId: user.id, ipAddress });
     await this.enforceBudgetCaps();
 
-    const freeUsedToday = await this.countReservedOrSuccessfulGenerationsSince(user.id, startOfTodayIso());
+    const freeUsedThisMonth = await this.countReservedOrSuccessfulGenerationsSince(user.id, startOfMonthIso());
     const credits = await this.getCreditBalance(user.id);
-    const useFreeQuota = freeUsedToday < this.config.freeAiGamesPerDay;
+    const useFreeQuota = freeUsedThisMonth < this.config.freeAiGamesPerMonth;
     const creditCost = this.config.aiCreditCostPerQuiz;
 
     if (!useFreeQuota && credits < creditCost) {
-      throw new Error('You are out of AI game credits. Upgrade or buy a credit pack to continue.');
+      throw new Error('You are out of AI games. Upgrade or buy a pack to continue.');
     }
 
     const generationId = this.getOperationId();
@@ -287,12 +318,18 @@ class AiUsageService {
     });
 
     if (!useFreeQuota) {
+      const consumedGrants = await this.consumeCreditGrants({
+        userId: user.id,
+        credits: creditCost,
+      });
+      reservation.consumedGrants = consumedGrants;
+
       await this.insertLedger({
         userId: user.id,
         delta: -creditCost,
         reason: 'ai_quiz_reserved',
         sourceId: generationId,
-        metadata: { topic, language, model },
+        metadata: { topic, language, model, consumedGrants },
       });
     }
 
@@ -333,6 +370,7 @@ class AiUsageService {
     });
 
     if (reservation.mode === 'paid_credit') {
+      await this.restoreConsumedCreditGrants(reservation.consumedGrants || []);
       await this.insertLedger({
         userId: reservation.userId,
         delta: reservation.creditCost,
@@ -493,7 +531,161 @@ class AiUsageService {
     }
   }
 
-  async grantCredits({ userId, credits, reason, sourceId, metadata = {} }) {
+  async getCreditGrants(userId) {
+    if (!userId) {
+      return [];
+    }
+
+    if (!this.client) {
+      return this.memory.creditGrants
+        .filter((grant) => grant.userId === userId)
+        .sort((a, b) => {
+          const aExpiry = a.expiresAt || '9999-12-31T23:59:59.999Z';
+          const bExpiry = b.expiresAt || '9999-12-31T23:59:59.999Z';
+          return aExpiry.localeCompare(bExpiry) || a.createdAt.localeCompare(b.createdAt);
+        });
+    }
+
+    const { data, error } = await this.client
+      .from('credit_grants')
+      .select('id, user_id, source_id, grant_type, original_credits, remaining_credits, expires_at, metadata, created_at')
+      .eq('user_id', userId)
+      .order('expires_at', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw new Error(`Failed to read AI game grants: ${error.message}`);
+    }
+
+    return (data || []).map((grant) => ({
+      id: grant.id,
+      userId: grant.user_id,
+      sourceId: grant.source_id,
+      grantType: grant.grant_type,
+      originalCredits: grant.original_credits,
+      remainingCredits: grant.remaining_credits,
+      expiresAt: grant.expires_at,
+      metadata: grant.metadata || {},
+      createdAt: grant.created_at,
+    }));
+  }
+
+  async insertCreditGrant({ userId, credits, sourceId, grantType = 'manual', expiresAt = null, metadata = {} }) {
+    if (!this.client) {
+      const existing = this.memory.creditGrants.find(
+        (grant) => grant.userId === userId && grant.sourceId === sourceId && grant.grantType === grantType
+      );
+      if (!existing) {
+        this.memory.creditGrants.push({
+          id: this.getOperationId(),
+          userId,
+          sourceId,
+          grantType,
+          originalCredits: credits,
+          remainingCredits: credits,
+          expiresAt,
+          metadata,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      return;
+    }
+
+    const { error } = await this.client.from('credit_grants').insert({
+      user_id: userId,
+      source_id: sourceId,
+      grant_type: grantType,
+      original_credits: credits,
+      remaining_credits: credits,
+      expires_at: expiresAt,
+      metadata,
+    });
+
+    if (error && error.code !== '23505') {
+      throw new Error(`Failed to grant AI games: ${error.message}`);
+    }
+  }
+
+  async updateCreditGrantRemaining(grantId, remainingCredits) {
+    if (!this.client) {
+      const grant = this.memory.creditGrants.find((item) => item.id === grantId);
+      if (grant) {
+        grant.remainingCredits = remainingCredits;
+      }
+      return;
+    }
+
+    const { error } = await this.client
+      .from('credit_grants')
+      .update({ remaining_credits: remainingCredits })
+      .eq('id', grantId);
+
+    if (error) {
+      throw new Error(`Failed to update AI game grant: ${error.message}`);
+    }
+  }
+
+  async consumeCreditGrants({ userId, credits }) {
+    let remainingToSpend = credits;
+    const consumed = [];
+    const grants = (await this.getCreditGrants(userId)).filter((grant) => isGrantAvailable(grant));
+
+    if (grants.length === 0 && (await this.getLegacyCreditBalance(userId)) >= credits) {
+      return [
+        {
+          legacy: true,
+          userId,
+          amount: credits,
+        },
+      ];
+    }
+
+    for (const grant of grants) {
+      if (remainingToSpend <= 0) {
+        break;
+      }
+
+      const amount = Math.min(grant.remainingCredits, remainingToSpend);
+      await this.updateCreditGrantRemaining(grant.id, grant.remainingCredits - amount);
+      consumed.push({
+        grantId: grant.id,
+        userId,
+        amount,
+      });
+      remainingToSpend -= amount;
+    }
+
+    if (remainingToSpend > 0) {
+      throw new Error('You are out of AI games. Upgrade or buy a pack to continue.');
+    }
+
+    return consumed;
+  }
+
+  async restoreConsumedCreditGrants(consumedGrants) {
+    for (const consumed of consumedGrants) {
+      if (consumed.legacy) {
+        continue;
+      }
+
+      const grants = await this.getCreditGrants(consumed.userId);
+      const grant = grants.find((item) => item.id === consumed.grantId);
+      if (grant) {
+        await this.updateCreditGrantRemaining(grant.id, grant.remainingCredits + consumed.amount);
+      }
+    }
+  }
+
+  async grantCredits({ userId, credits, reason, sourceId, metadata = {}, grantType = 'manual', expiresAt = null }) {
+    await this.insertCreditGrant({
+      userId,
+      credits,
+      sourceId,
+      grantType,
+      expiresAt,
+      metadata: { ...metadata, reason },
+    });
+
     await this.insertLedger({
       userId,
       delta: credits,

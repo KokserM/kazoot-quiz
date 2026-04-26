@@ -30,9 +30,10 @@ STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PLUS_PRICE_ID=price_...
 STRIPE_PRO_PRICE_ID=price_...
-STRIPE_CREDIT_PACK_100_PRICE_ID=price_...
-STRIPE_CREDIT_PACK_250_PRICE_ID=price_...
-FREE_AI_GAMES_PER_DAY=3
+STRIPE_CREDIT_PACK_20_PRICE_ID=price_...
+STRIPE_CREDIT_PACK_60_PRICE_ID=price_...
+STRIPE_CREDIT_PACK_150_PRICE_ID=price_...
+FREE_AI_GAMES_PER_MONTH=3
 DAILY_OPENAI_BUDGET_USD=10
 MONTHLY_OPENAI_BUDGET_USD=100
 QUESTION_TIME_LIMIT_MS=20000  # optional
@@ -55,6 +56,7 @@ Notes:
 - `FRONTEND_URL` should match the public domain you want to allow through CORS.
 - Use `CORS_ALLOWED_ORIGINS` for any extra custom domains or Railway aliases; production no longer trusts every `*.railway.app` origin by default.
 - Run `backend/db/001_ai_cost_controls.sql` in Supabase before setting live Stripe prices.
+- The SQL backfills existing positive paid balances from `usage_ledger` into non-expiring manual AI-game grants for already registered users.
 - Configure Google as a Supabase Auth provider and add your Railway domain to allowed redirect URLs.
 
 ## Build and start behavior
@@ -74,7 +76,7 @@ The backend serves `frontend/dist` in production.
 - Host changes are broadcast automatically if the current host disconnects.
 - Sessions are cleaned up after inactivity.
 - Hosts can choose whether results reveal when the timer ends or when all connected players have answered.
-- GPT-5.4 generation requires a signed-in host and consumes free daily quota or paid credits.
+- GPT-5.4 generation requires a signed-in host and consumes free monthly quota or paid AI games.
 - Anonymous hosts can still create demo/fallback games without spending GPT tokens.
 - `GET /health` includes store mode, active sessions, sessions by state, socket index size, uptime, memory usage, event-loop delay, configured limits, and degraded reasons.
 
@@ -82,10 +84,10 @@ The backend serves `frontend/dist` in production.
 
 1. Create Supabase project and run `backend/db/001_ai_cost_controls.sql`.
 2. Enable Google login in Supabase Auth.
-3. Create Stripe products/prices for Plus, Pro, and credit packs.
+3. Create Stripe products/prices for Plus 20, Pro 75, and packs 20/60/150.
 4. Add the Stripe webhook endpoint: `https://your-domain/api/billing/webhook`.
 5. Test with Stripe test mode before using live price IDs.
-6. Monitor `quiz_generations.estimated_cost_usd`, free usage, credit balances, and failed/refunded generations.
+6. Monitor `quiz_generations.estimated_cost_usd`, free usage, AI-game grant balances, and failed/refunded generations.
 7. Start with conservative caps and adjust pricing after real token usage data.
 
 ## Scale runbook

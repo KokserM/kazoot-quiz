@@ -39,38 +39,45 @@ const PLAN_DETAILS = {
     title: 'Plus monthly',
     badge: 'Best for regular hosts',
     family: 'Subscription',
-    description: 'A predictable monthly credit refill for weekly quiz nights and small communities.',
+    description: '20 AI games every month for weekly quiz nights and small communities.',
     cta: 'Subscribe to Plus',
   },
   pro_monthly: {
     title: 'Pro monthly',
     badge: 'Best value',
     family: 'Subscription',
-    description: 'More credits for frequent hosts, classrooms, teams, and bigger recurring events.',
+    description: '75 AI games every month for frequent hosts, classrooms, teams, and recurring events.',
     cta: 'Subscribe to Pro',
   },
-  credits_100: {
-    title: '100 credit pack',
+  credits_20: {
+    title: 'Pack 20',
     badge: 'One-time top-up',
-    family: 'Credit pack',
-    description: 'Add credits without a subscription. Good when you only need an occasional boost.',
-    cta: 'Buy 100 credits',
+    family: 'AI game pack',
+    description: '20 AI games without a subscription. Good when you only need an occasional boost.',
+    cta: 'Buy Pack 20',
   },
-  credits_250: {
-    title: '250 credit pack',
+  credits_60: {
+    title: 'Pack 60',
     badge: 'Flexible pack',
-    family: 'Credit pack',
-    description: 'A larger one-time top-up for busier periods without committing monthly.',
-    cta: 'Buy 250 credits',
+    family: 'AI game pack',
+    description: '60 AI games for busier months without committing to a subscription.',
+    cta: 'Buy Pack 60',
+  },
+  credits_150: {
+    title: 'Pack 150',
+    badge: 'Best pack value',
+    family: 'AI game pack',
+    description: '150 AI games for events, classrooms, and busy seasons. Packs last 12 months.',
+    cta: 'Buy Pack 150',
   },
 };
 
 function getPlanDetails(plan) {
   return PLAN_DETAILS[plan.id] || {
-    title: `${plan.credits} credit plan`,
-    badge: plan.mode === 'subscription' ? 'Subscription' : 'Credit pack',
-    family: plan.mode === 'subscription' ? 'Subscription' : 'Credit pack',
-    description: `${plan.credits} AI game credits ${plan.mode === 'subscription' ? 'included each billing cycle.' : 'added after payment.'}`,
+    title: `${plan.credits} AI game plan`,
+    badge: plan.mode === 'subscription' ? 'Subscription' : 'AI game pack',
+    family: plan.mode === 'subscription' ? 'Subscription' : 'AI game pack',
+    description: `${plan.credits} AI games ${plan.mode === 'subscription' ? 'included each month.' : 'added after payment.'}`,
     cta: 'Choose plan',
   };
 }
@@ -80,9 +87,9 @@ export default function AccountPage() {
   const [plans, setPlans] = useState([]);
   const [error, setError] = useState('');
   const [isLoadingPlan, setIsLoadingPlan] = useState('');
-  const freeRemainingToday = usage?.freeRemainingToday ?? 0;
+  const freeRemainingThisMonth = usage?.freeRemainingThisMonth ?? usage?.freeRemainingToday ?? 0;
   const paidCredits = usage?.credits ?? 0;
-  const needsCredits = Boolean(user && usage && freeRemainingToday <= 0 && paidCredits <= 0);
+  const needsCredits = Boolean(user && usage && freeRemainingThisMonth <= 0 && paidCredits <= 0);
 
   useEffect(() => {
     fetchBillingCatalog()
@@ -111,10 +118,10 @@ export default function AccountPage() {
         </PanelTitleHeader>
         <PanelBody>
         <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
-            <Eyebrow>Account & AI credits</Eyebrow>
+            <Eyebrow>Account & AI games</Eyebrow>
             <Subtitle style={{ marginTop: 12 }}>
-              AI question generation is metered. You get 3 free AI games per day, then paid credits
-              keep generation predictable.
+              AI question generation is metered. You get 3 free AI games per month, then paid AI games
+              keep generation predictable. Subscription AI games roll over for one extra month. Packs last 12 months.
             </Subtitle>
           <ButtonRow style={{ marginTop: 18 }}>
             <Button as={Link} to="/create" variant="ghost" compact>
@@ -128,7 +135,7 @@ export default function AccountPage() {
 
         {!user ? (
           <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <SectionTitle>Sign in to track credits</SectionTitle>
+            <SectionTitle>Sign in to track AI games left</SectionTitle>
             <Subtitle style={{ marginTop: 8 }}>
               Google login is required for GPT-5.4 generation and billing. Demo games can still run without it.
             </Subtitle>
@@ -144,12 +151,12 @@ export default function AccountPage() {
               <Eyebrow>{needsCredits ? 'Action needed' : 'Ready to host'}</Eyebrow>
               <div style={{ marginTop: 14 }}>
                 <SectionTitle>
-                  {needsCredits ? 'Add credits to keep generating AI games.' : `Welcome back, ${getDisplayName(user)}.`}
+                  {needsCredits ? 'Add AI games to keep generating.' : `Welcome back, ${getDisplayName(user)}.`}
                 </SectionTitle>
                 <Subtitle style={{ marginTop: 8 }}>
                   {needsCredits
-                    ? 'Your free AI games are used for today and you have no paid credits. Subscribe or buy a pack before hosting the next AI-generated game.'
-                    : 'Your free daily games are used first. Paid credits are only spent after the free allowance runs out.'}
+                    ? 'Your free AI games are used for this month and you have no paid AI games left. Subscribe or buy a pack before hosting the next AI-generated game.'
+                    : 'Your free monthly games are used first. Paid AI games are only spent after the free allowance runs out.'}
                 </Subtitle>
               </div>
 
@@ -161,9 +168,9 @@ export default function AccountPage() {
               >
                 <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{user.email}</StatChip>
                 <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                  {freeRemainingToday} free AI games left today
+                  {freeRemainingThisMonth} free AI games left this month
                 </StatChip>
-                <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{paidCredits} paid credits</StatChip>
+                <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{paidCredits} paid AI games left</StatChip>
                 <StatChip style={{ minWidth: 0, overflowWrap: 'anywhere' }}>Tier: {usage?.tier || 'free'}</StatChip>
               </Grid>
 
@@ -202,7 +209,7 @@ export default function AccountPage() {
                       </SectionTitle>
                       <Subtitle>{details.description}</Subtitle>
                       <HelperText>
-                        {plan.credits} AI game credits {plan.mode === 'subscription' ? 'included each billing cycle.' : 'added after payment.'}
+                        {plan.credits} AI games {plan.mode === 'subscription' ? 'included each month. Unused games roll over for one extra month.' : 'added after payment and valid for 12 months.'}
                       </HelperText>
                       <Button
                         type="button"

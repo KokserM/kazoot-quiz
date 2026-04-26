@@ -65,9 +65,10 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PLUS_PRICE_ID=price_...
 STRIPE_PRO_PRICE_ID=price_...
-STRIPE_CREDIT_PACK_100_PRICE_ID=price_...
-STRIPE_CREDIT_PACK_250_PRICE_ID=price_...
-FREE_AI_GAMES_PER_DAY=3
+STRIPE_CREDIT_PACK_20_PRICE_ID=price_...
+STRIPE_CREDIT_PACK_60_PRICE_ID=price_...
+STRIPE_CREDIT_PACK_150_PRICE_ID=price_...
+FREE_AI_GAMES_PER_MONTH=3
 DAILY_OPENAI_BUDGET_USD=10
 MONTHLY_OPENAI_BUDGET_USD=100
 MAX_ACTIVE_SESSIONS=500
@@ -110,11 +111,13 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 ## AI generation and billing
 
 - Anonymous hosts can create demo/fallback games, but GPT-5.4 generation requires Google sign-in through Supabase Auth.
-- Signed-in users get 3 free AI-generated games per day by default.
-- Paid usage is tracked as AI game credits: `1 credit = 1 generated 10-question quiz`.
-- Suggested starting tiers are Plus (`$5/month`, 100 credits), Pro (`$12/month`, 350 credits), and credit packs (`$5/100`, `$10/250`).
-- Stripe Checkout handles payments; Stripe webhooks grant credits through an append-only ledger.
+- Signed-in users get 3 free AI-generated games per month by default.
+- Paid usage is shown as AI games left: `1 AI game = 1 generated 10-question quiz`.
+- Suggested starting tiers are Plus (`€5/month`, 20 AI games), Pro (`€12/month`, 75 AI games), and packs 20/60/150.
+- Subscription AI games roll over for one extra billing period. Packs expire after 12 months.
+- Stripe Checkout handles payments; Stripe webhooks grant AI games and keep an append-only ledger.
 - Run `backend/db/001_ai_cost_controls.sql` in Supabase before enabling auth or billing.
+- Existing positive paid balances in `usage_ledger` are backfilled into a non-expiring manual AI-game grant when the SQL is applied.
 - Prompt inputs are treated as data and screened for instruction-like text before OpenAI is called.
 
 ## Realtime behavior

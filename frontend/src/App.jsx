@@ -205,7 +205,7 @@ export function getCreateButtonLabel({ isLoading, isSignedInAiBlocked, user, has
   }
 
   if (isSignedInAiBlocked) {
-    return 'Add credits to create AI game';
+    return 'Add AI games to create AI game';
   }
 
   return user && hasOpenAI ? 'Create AI game' : 'Create demo game';
@@ -324,9 +324,9 @@ function CreatePage() {
     ['timer', 'Wait for timer', 'Keeps suspense and gives everyone the full round.'],
     ['all_answered', 'Reveal when all answer', 'Moves faster when every connected player has locked in.'],
   ];
-  const freeRemainingToday = usage?.freeRemainingToday ?? 0;
+  const freeRemainingThisMonth = usage?.freeRemainingThisMonth ?? usage?.freeRemainingToday ?? 0;
   const paidCredits = usage?.credits ?? 0;
-  const hasAiBalance = freeRemainingToday > 0 || paidCredits > 0;
+  const hasAiBalance = freeRemainingThisMonth > 0 || paidCredits > 0;
   const isSignedInAiBlocked = Boolean(hasOpenAI && user && usage && !hasAiBalance);
   const createButtonLabel = getCreateButtonLabel({
     isLoading,
@@ -401,7 +401,7 @@ function CreatePage() {
             <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 18 }}>
               <Eyebrow>Choose how you want to host</Eyebrow>
               <Subtitle style={{ marginTop: 12 }}>
-                Sign in with Google to generate unique GPT-5.4 games and get 3 free AI games per day.
+                Sign in with Google to generate unique GPT-5.4 games and get 3 free AI games per month.
                 You can also continue without login and host with built-in demo questions.
               </Subtitle>
               <ButtonRow style={{ marginTop: 18 }}>
@@ -419,8 +419,8 @@ function CreatePage() {
                 <Eyebrow>Recommended for hosts</Eyebrow>
                 <SectionTitle style={{ fontSize: '1.35rem' }}>Generate unique AI games</SectionTitle>
                 <Subtitle>
-                  Use Google login to unlock GPT-5.4 question generation, track your credits, and get 3 free
-                  AI games every day before paid credits are used.
+                  Use Google login to unlock GPT-5.4 question generation, track your AI games left, and get 3 free
+                  AI games every month before paid AI games are used.
                 </Subtitle>
                 <Button type="button" disabled={!isConfigured} onClick={signIn} whileTap={{ scale: 0.98 }}>
                   Continue with Google
@@ -484,15 +484,15 @@ function CreatePage() {
                 <HelperText>
                   {user
                     ? isSignedInAiBlocked
-                      ? 'You are out of free AI games and paid credits. Add credits or subscribe before creating another AI-generated game.'
-                      : `${freeRemainingToday} free AI games left today. ${paidCredits} paid credits available. Free games are used before paid credits.`
-                    : 'You are creating a demo room with built-in questions. Sign in if you want unique GPT-5.4 questions and 3 free AI games per day.'}
+                      ? 'You are out of free AI games and paid AI games left. Subscribe or buy a pack before creating another AI-generated game.'
+                      : `${freeRemainingThisMonth} free AI games left this month. ${paidCredits} paid AI games left. Free games are used first.`
+                    : 'You are creating a demo room with built-in questions. Sign in if you want unique GPT-5.4 questions and 3 free AI games per month.'}
                 </HelperText>
               </div>
               {user ? (
                 <ButtonRow>
                   <Button as={Link} to="/account" type="button" variant={isSignedInAiBlocked ? 'primary' : 'secondary'} compact>
-                    {isSignedInAiBlocked ? 'Add credits' : 'Account & credits'}
+                    {isSignedInAiBlocked ? 'Add AI games' : 'Account & AI games'}
                   </Button>
                 </ButtonRow>
               ) : (
@@ -1547,7 +1547,7 @@ function AppRoutes() {
                   </PanelTitleHeader>
                   <PanelBody>
                     <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                      <Subtitle>Preparing your account and credit details...</Subtitle>
+                      <Subtitle>Preparing your account and AI games left...</Subtitle>
                     </Card>
                   </PanelBody>
                 </GlassPanel>

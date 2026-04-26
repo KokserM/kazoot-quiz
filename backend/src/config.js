@@ -14,7 +14,7 @@ const DEFAULT_DEGRADED_HEAP_USED_MB = 384;
 const DEFAULT_SOCKET_PING_INTERVAL_MS = 25000;
 const DEFAULT_SOCKET_PING_TIMEOUT_MS = 30000;
 const DEFAULT_SOCKET_MAX_HTTP_BUFFER_SIZE = 1000000;
-const DEFAULT_FREE_AI_GAMES_PER_DAY = 3;
+const DEFAULT_FREE_AI_GAMES_PER_MONTH = 3;
 const DEFAULT_AI_CREDIT_COST_PER_QUIZ = 1;
 const DEFAULT_DAILY_OPENAI_BUDGET_USD = 10;
 const DEFAULT_MONTHLY_OPENAI_BUDGET_USD = 100;
@@ -142,9 +142,9 @@ const config = {
   openAiModel: process.env.OPENAI_MODEL || 'gpt-5.4',
   aiModelFreeTier: process.env.AI_MODEL_FREE_TIER || process.env.OPENAI_MODEL || 'gpt-5.4',
   aiModelPaidTier: process.env.AI_MODEL_PAID_TIER || process.env.OPENAI_MODEL || 'gpt-5.4',
-  freeAiGamesPerDay: toNumber(
-    process.env.FREE_AI_GAMES_PER_DAY,
-    DEFAULT_FREE_AI_GAMES_PER_DAY
+  freeAiGamesPerMonth: toNumber(
+    process.env.FREE_AI_GAMES_PER_MONTH || process.env.FREE_AI_GAMES_PER_DAY,
+    DEFAULT_FREE_AI_GAMES_PER_MONTH
   ),
   aiCreditCostPerQuiz: toNumber(
     process.env.AI_CREDIT_COST_PER_QUIZ,
@@ -180,6 +180,9 @@ const config = {
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   stripePlusPriceId: process.env.STRIPE_PLUS_PRICE_ID || '',
   stripeProPriceId: process.env.STRIPE_PRO_PRICE_ID || '',
+  stripeCreditPack20PriceId: process.env.STRIPE_CREDIT_PACK_20_PRICE_ID || '',
+  stripeCreditPack60PriceId: process.env.STRIPE_CREDIT_PACK_60_PRICE_ID || '',
+  stripeCreditPack150PriceId: process.env.STRIPE_CREDIT_PACK_150_PRICE_ID || '',
   stripeCreditPack100PriceId: process.env.STRIPE_CREDIT_PACK_100_PRICE_ID || '',
   stripeCreditPack250PriceId: process.env.STRIPE_CREDIT_PACK_250_PRICE_ID || '',
   billingSuccessUrl: process.env.BILLING_SUCCESS_URL || `${frontendUrl || 'http://localhost:3000'}/account?billing=success`,

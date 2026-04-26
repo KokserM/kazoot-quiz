@@ -169,7 +169,7 @@ function createApp({ gameService, store, questionService, authService, aiUsageSe
       authEnabled: authService?.isConfigured() || false,
       billingEnabled: billingService?.isConfigured() || false,
       aiUsage: {
-        freeAiGamesPerDay: config.freeAiGamesPerDay,
+        freeAiGamesPerMonth: config.freeAiGamesPerMonth,
         aiCreditCostPerQuiz: config.aiCreditCostPerQuiz,
         dailyOpenAiBudgetUsd: config.dailyOpenAiBudgetUsd,
       },
