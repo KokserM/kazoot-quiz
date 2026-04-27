@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { createCheckoutSession, fetchBillingCatalog } from '../lib/api';
 import { useAuth } from '../auth/AuthProvider';
 import { AccountStatusBar, getDisplayName } from '../components/AccountStatusBar';
+import { TrustFooter } from '../components/TrustFooter';
+import { SUPPORT_EMAIL } from '../lib/support';
 import {
   Banner,
   Button,
@@ -29,6 +31,7 @@ function Shell({ children }) {
       <CenteredContent>
         <AccountStatusBar />
         {children}
+        <TrustFooter />
       </CenteredContent>
     </PageShell>
   );
@@ -211,6 +214,7 @@ export default function AccountPage() {
                       <HelperText>
                         {plan.credits} AI games {plan.mode === 'subscription' ? 'each month. Unused games roll over for one extra month.' : 'added after payment. Packs last 12 months.'}
                       </HelperText>
+                      <HelperText>Secure checkout by Stripe.</HelperText>
                       <Button
                         type="button"
                         compact
@@ -226,6 +230,22 @@ export default function AccountPage() {
                 );
               })}
             </Grid>
+            <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: 18 }}>
+              <Stack gap="12px">
+                <Eyebrow>Safe checkout, fair credits</Eyebrow>
+                <SectionTitle style={{ fontSize: '1.2rem' }}>Buy AI games with clear rules.</SectionTitle>
+                <Subtitle>
+                  Checkout opens through Stripe. Free monthly games are used first, paid games stay on your
+                  account until used or expired, and failed generations do not spend a credit.
+                </Subtitle>
+                <Grid gap="12px" columns="repeat(auto-fit, minmax(200px, 1fr))" $mobileColumns="1fr">
+                  <StatChip>Card details handled by Stripe</StatChip>
+                  <StatChip>Failed generations do not spend credits</StatChip>
+                  <StatChip>Support: {SUPPORT_EMAIL}</StatChip>
+                </Grid>
+                <HelperText>We aim to reply to support requests within 2 business days.</HelperText>
+              </Stack>
+            </Card>
           </>
         )}
         </PanelBody>

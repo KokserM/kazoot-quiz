@@ -7,6 +7,7 @@ import { fetchDemoTopics, createSession as requestCreateSession } from './lib/ap
 import { loadPlayerSession } from './lib/storage';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { AccountStatusBar, getDisplayName } from './components/AccountStatusBar';
+import { TrustFooter } from './components/TrustFooter';
 import { GameProvider, useGame } from './providers/GameProvider';
 import { GlobalStyle } from './styles/GlobalStyle';
 import { theme } from './styles/theme';
@@ -46,6 +47,9 @@ import {
 } from './components/ui';
 
 const AccountPage = lazy(() => import('./pages/AccountPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
 
 function Shell({ children, dense = false, accountBarMode = 'default' }) {
   return (
@@ -53,6 +57,7 @@ function Shell({ children, dense = false, accountBarMode = 'default' }) {
       <CenteredContent>
         <AccountStatusBar dense={dense} mode={accountBarMode} />
         {children}
+        <TrustFooter />
       </CenteredContent>
     </PageShell>
   );
@@ -1593,6 +1598,36 @@ function AppRoutes() {
         }
       />
       <Route path="/join" element={<JoinPage />} />
+      <Route
+        path="/privacy"
+        element={
+          <Suspense fallback={<Shell><Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>Loading privacy policy...</Card></Shell>}>
+            <Shell>
+              <PrivacyPage />
+            </Shell>
+          </Suspense>
+        }
+      />
+      <Route
+        path="/terms"
+        element={
+          <Suspense fallback={<Shell><Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>Loading terms...</Card></Shell>}>
+            <Shell>
+              <TermsPage />
+            </Shell>
+          </Suspense>
+        }
+      />
+      <Route
+        path="/refunds"
+        element={
+          <Suspense fallback={<Shell><Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>Loading refund policy...</Card></Shell>}>
+            <Shell>
+              <RefundPolicyPage />
+            </Shell>
+          </Suspense>
+        }
+      />
       <Route path="/session/:sessionId" element={<SessionPage />} />
     </Routes>
   );

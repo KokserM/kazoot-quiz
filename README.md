@@ -50,6 +50,7 @@ Create `frontend/.env` if you enable Google login:
 ```powershell
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPPORT_EMAIL=support@kazoot.app
 ```
 
 Optional settings:
@@ -116,6 +117,7 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 - Suggested starting tiers are Plus (`€5/month`, 20 AI games), Pro (`€12/month`, 75 AI games), and packs 20/60/150.
 - Subscription AI games roll over for one extra billing period. Packs expire after 12 months.
 - Stripe Checkout handles payments; Stripe webhooks grant AI games and keep an append-only ledger.
+- Use `VITE_SUPPORT_EMAIL` for the public support address shown in trust copy, policy pages, and contact links. `support@kazoot.app` can be backed by Porkbun email forwarding.
 - Run `backend/db/001_ai_cost_controls.sql` in Supabase before enabling auth or billing.
 - Existing positive paid balances in `usage_ledger` are backfilled into a non-expiring manual AI-game grant when the SQL is applied.
 - Prompt inputs are treated as data and screened for instruction-like text before OpenAI is called.

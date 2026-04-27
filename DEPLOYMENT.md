@@ -33,6 +33,7 @@ STRIPE_PRO_PRICE_ID=price_...
 STRIPE_CREDIT_PACK_20_PRICE_ID=price_...
 STRIPE_CREDIT_PACK_60_PRICE_ID=price_...
 STRIPE_CREDIT_PACK_150_PRICE_ID=price_...
+VITE_SUPPORT_EMAIL=support@kazoot.app
 FREE_AI_GAMES_PER_MONTH=3
 DAILY_OPENAI_BUDGET_USD=10
 MONTHLY_OPENAI_BUDGET_USD=100
@@ -58,6 +59,7 @@ Notes:
 - Run `backend/db/001_ai_cost_controls.sql` in Supabase before setting live Stripe prices.
 - The SQL backfills existing positive paid balances from `usage_ledger` into non-expiring manual AI-game grants for already registered users.
 - Configure Google as a Supabase Auth provider and add your Railway domain to allowed redirect URLs.
+- Set `VITE_SUPPORT_EMAIL` to the public support address shown in trust copy and policy pages. For the current launch, `support@kazoot.app` can forward through Porkbun email forwarding.
 
 ## Build and start behavior
 

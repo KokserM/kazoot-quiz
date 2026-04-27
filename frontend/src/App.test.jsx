@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, test } from 'vitest';
 import App, {
   getCreateButtonLabel,
@@ -16,10 +16,13 @@ import App, {
 } from './App';
 import { buildJoinGamePayload, getSocketTransports } from './providers/GameProvider';
 import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlayerSession } from './lib/storage';
+import { getSupportEmail } from './lib/support';
 import { getUsageSummaryLabel } from './components/AccountStatusBar';
 
 afterEach(() => {
+  cleanup();
   localStorage.clear();
+  window.history.pushState({}, '', '/');
 });
 
 test('renders Kazoot marketing headline', () => {
@@ -27,6 +30,28 @@ test('renders Kazoot marketing headline', () => {
   expect(
     screen.getByText(/Host a quiz night your friends can join in seconds/i)
   ).toBeInTheDocument();
+});
+
+test('renders trust footer with support and policy links', () => {
+  render(<App />);
+  expect(screen.getByText(/Questions before buying/i)).toBeInTheDocument();
+  expect(screen.getByText(/support@kazoot\.app/i)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /privacy/i })).toHaveAttribute('href', '/privacy');
+  expect(screen.getByRole('link', { name: /refunds/i })).toHaveAttribute('href', '/refunds');
+});
+
+test('support email falls back to kazoot address and respects env override', () => {
+  expect(getSupportEmail({})).toBe('support@kazoot.app');
+  expect(getSupportEmail({ VITE_SUPPORT_EMAIL: ' help@example.com ' })).toBe('help@example.com');
+});
+
+test('refund policy page explains fair credit handling', async () => {
+  window.history.pushState({}, '', '/refunds');
+  render(<App />);
+
+  expect(await screen.findByText(/Refund Policy/i)).toBeInTheDocument();
+  expect(await screen.findByText(/If an AI game is not successfully created/i)).toBeInTheDocument();
+  expect(await screen.findByText(/We aim to reply within 2 business days/i)).toBeInTheDocument();
 });
 
 test('countdown keeps decreasing after local question state changes', () => {
