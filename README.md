@@ -53,6 +53,15 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_SUPPORT_EMAIL=support@kazoot.app
 ```
 
+### Configure Google login redirects
+
+In Supabase Auth URL configuration, set:
+
+- Site URL: `https://kazoot.app`
+- Redirect URLs: `https://kazoot.app/**`
+
+Only add `https://www.kazoot.app/**` if the `www` domain is live. Only add Railway-generated domains if users can actually reach the app through those URLs.
+
 Optional settings:
 
 ```powershell

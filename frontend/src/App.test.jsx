@@ -15,9 +15,11 @@ import App, {
   shouldShowSessionJoinLoading,
 } from './App';
 import { buildJoinGamePayload, getSocketTransports } from './providers/GameProvider';
+import { INITIAL_AUTH_STATE, reduceAuthSessionState } from './auth/AuthProvider';
 import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlayerSession } from './lib/storage';
 import { getSupportEmail } from './lib/support';
-import { getUsageSummaryLabel } from './components/AccountStatusBar';
+import { getOAuthRedirectTo } from './lib/supabase';
+import { getSignedOutAuthCopy, getUsageSummaryLabel } from './components/AccountStatusBar';
 
 afterEach(() => {
   cleanup();
@@ -43,6 +45,44 @@ test('renders trust footer with support and policy links', () => {
 test('support email falls back to kazoot address and respects env override', () => {
   expect(getSupportEmail({})).toBe('support@kazoot.app');
   expect(getSupportEmail({ VITE_SUPPORT_EMAIL: ' help@example.com ' })).toBe('help@example.com');
+});
+
+test('stale initial auth session cannot overwrite a newer signed-in event', () => {
+  const signedInSession = {
+    access_token: 'access-token',
+    user: { id: 'user-1', email: 'host@example.com' },
+  };
+
+  const signedInState = reduceAuthSessionState(INITIAL_AUTH_STATE, {
+    type: 'auth-event',
+    event: 'SIGNED_IN',
+    session: signedInSession,
+  });
+  const staleInitialState = reduceAuthSessionState(signedInState, {
+    type: 'initial-session',
+    session: null,
+  });
+
+  expect(staleInitialState.session).toBe(signedInSession);
+  expect(staleInitialState.isAuthLoading).toBe(false);
+});
+
+test('signed-out auth copy stays neutral while auth initializes', () => {
+  expect(getSignedOutAuthCopy(true)).toEqual({
+    benefit: 'Checking sign-in...',
+    button: 'Checking account...',
+    disabled: true,
+  });
+  expect(getSignedOutAuthCopy(false)).toEqual({
+    benefit: 'Host 3 AI games free this month',
+    button: 'Sign in for AI games',
+    disabled: false,
+  });
+});
+
+test('oauth redirect helper returns stable production-safe routes', () => {
+  expect(getOAuthRedirectTo({ origin: 'https://kazoot.app', pathname: '/' })).toBe('https://kazoot.app/account');
+  expect(getOAuthRedirectTo({ origin: 'https://kazoot.app', pathname: '/create' })).toBe('https://kazoot.app/create');
 });
 
 test('refund policy page explains fair credit handling', async () => {

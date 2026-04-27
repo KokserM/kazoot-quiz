@@ -61,6 +61,13 @@ Notes:
 - Configure Google as a Supabase Auth provider and add your Railway domain to allowed redirect URLs.
 - Set `VITE_SUPPORT_EMAIL` to the public support address shown in trust copy and policy pages. For the current launch, `support@kazoot.app` can forward through Porkbun email forwarding.
 
+Supabase Auth URL configuration for production:
+
+- Site URL: `https://kazoot.app`
+- Redirect URLs: `https://kazoot.app/**`
+- Add `https://www.kazoot.app/**` only if the `www` domain is live.
+- Add Railway-generated domains only if users can reach the app through those URLs.
+
 ## Build and start behavior
 
 Railway uses `nixpacks.toml` in this repo to:

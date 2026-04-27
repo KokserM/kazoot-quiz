@@ -9,6 +9,11 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
+export function getOAuthRedirectTo({ origin = window.location.origin, pathname = window.location.pathname } = {}) {
+  const returnPath = pathname && pathname !== '/' ? pathname : '/account';
+  return `${origin}${returnPath}`;
+}
+
 export async function signInWithGoogle() {
   if (!supabase) {
     throw new Error('Google login is not configured yet.');
@@ -17,7 +22,7 @@ export async function signInWithGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: window.location.origin,
+      redirectTo: getOAuthRedirectTo(),
     },
   });
 

@@ -327,7 +327,7 @@ function MarketingHome() {
 
 function CreatePage() {
   const navigate = useNavigate();
-  const { accessToken, authError, isConfigured, refreshUsage, signIn, usage, user } = useAuth();
+  const { accessToken, authError, isAuthLoading, isConfigured, refreshUsage, signIn, usage, user } = useAuth();
   const [hostMode, setHostMode] = useState(null);
   const [username, setUsername] = useState('');
   const [hasEditedUsername, setHasEditedUsername] = useState(false);
@@ -363,7 +363,7 @@ function CreatePage() {
   const createLoadingMessages = getCreateLoadingMessages({ user, hasOpenAI });
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const createLoadingMessage = createLoadingMessages[loadingMessageIndex % createLoadingMessages.length];
-  const shouldShowHostGate = !user && !hostMode;
+  const shouldShowHostGate = !isAuthLoading && !user && !hostMode;
 
   useEffect(() => {
     fetchDemoTopics()
@@ -421,6 +421,23 @@ function CreatePage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  if (isAuthLoading && !hostMode) {
+    return (
+      <Shell>
+        <GlassPanel initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
+          <PanelTitleHeader>
+            <SectionTitle>Checking your sign-in</SectionTitle>
+          </PanelTitleHeader>
+          <PanelBody>
+            <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <Subtitle>Hold on while Kazoot confirms your Google account.</Subtitle>
+            </Card>
+          </PanelBody>
+        </GlassPanel>
+      </Shell>
+    );
   }
 
   if (shouldShowHostGate) {

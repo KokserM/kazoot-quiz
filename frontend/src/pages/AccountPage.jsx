@@ -86,7 +86,17 @@ function getPlanDetails(plan) {
 }
 
 export default function AccountPage() {
-  const { accessToken, authError, isConfigured, refreshUsage, signIn, signOut: doSignOut, usage, user } = useAuth();
+  const {
+    accessToken,
+    authError,
+    isAuthLoading,
+    isConfigured,
+    refreshUsage,
+    signIn,
+    signOut: doSignOut,
+    usage,
+    user,
+  } = useAuth();
   const [plans, setPlans] = useState([]);
   const [error, setError] = useState('');
   const [isLoadingPlan, setIsLoadingPlan] = useState('');
@@ -136,7 +146,14 @@ export default function AccountPage() {
         {error ? <Banner $tone="danger">{error}</Banner> : null}
         {authError ? <Banner $tone="danger">{authError}</Banner> : null}
 
-        {!user ? (
+        {isAuthLoading ? (
+          <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <SectionTitle>Checking your sign-in</SectionTitle>
+            <Subtitle style={{ marginTop: 8 }}>
+              Hold on while Kazoot confirms your Google account and AI games left.
+            </Subtitle>
+          </Card>
+        ) : !user ? (
           <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <SectionTitle>Sign in to see your AI games left</SectionTitle>
             <Subtitle style={{ marginTop: 8 }}>

@@ -160,10 +160,27 @@ export function getUsageSummaryLabel(usage) {
   } paid AI games left`;
 }
 
+export function getSignedOutAuthCopy(isAuthLoading) {
+  if (isAuthLoading) {
+    return {
+      benefit: 'Checking sign-in...',
+      button: 'Checking account...',
+      disabled: true,
+    };
+  }
+
+  return {
+    benefit: 'Host 3 AI games free this month',
+    button: 'Sign in for AI games',
+    disabled: false,
+  };
+}
+
 export function AccountStatusBar({ dense = false, mode = 'default' }) {
-  const { isConfigured, signIn, signOut, usage, user } = useAuth();
+  const { isAuthLoading, isConfigured, signIn, signOut, usage, user } = useAuth();
   const avatarUrl = user?.user_metadata?.avatar_url;
   const isJoinMode = mode === 'join';
+  const signedOutAuthCopy = getSignedOutAuthCopy(isAuthLoading);
 
   return (
     <Bar $dense={dense} $mode={mode}>
@@ -208,9 +225,15 @@ export function AccountStatusBar({ dense = false, mode = 'default' }) {
           </>
         ) : (
           <>
-            <BenefitText>Host 3 AI games free this month</BenefitText>
-            <Button type="button" variant="secondary" compact disabled={!isConfigured} onClick={signIn}>
-              Sign in for AI games
+            <BenefitText>{signedOutAuthCopy.benefit}</BenefitText>
+            <Button
+              type="button"
+              variant="secondary"
+              compact
+              disabled={!isConfigured || signedOutAuthCopy.disabled}
+              onClick={signIn}
+            >
+              {signedOutAuthCopy.button}
             </Button>
           </>
         )}
