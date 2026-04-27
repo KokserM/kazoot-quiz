@@ -353,11 +353,18 @@ test('subscription rollover and pack expiry affect available paid AI games', asy
 });
 
 test('stripe catalog exposes new AI game plans and pack sizes', () => {
-  assert.equal(PRICE_CATALOG.plus_monthly.credits, 20);
-  assert.equal(PRICE_CATALOG.pro_monthly.credits, 75);
+  assert.equal(PRICE_CATALOG.plus_monthly.credits, 30);
+  assert.equal(PRICE_CATALOG.pro_monthly.credits, 90);
   assert.equal(PRICE_CATALOG.credits_20.credits, 20);
   assert.equal(PRICE_CATALOG.credits_60.credits, 60);
   assert.equal(PRICE_CATALOG.credits_150.credits, 150);
+  assert.equal(PRICE_CATALOG.plus_monthly.amountCents, 500);
+  assert.equal(PRICE_CATALOG.plus_monthly.currency, 'EUR');
+  assert.equal(PRICE_CATALOG.plus_monthly.interval, 'month');
+  assert.equal(PRICE_CATALOG.pro_monthly.amountCents, 1200);
+  assert.equal(PRICE_CATALOG.credits_20.amountCents, 500);
+  assert.equal(PRICE_CATALOG.credits_60.amountCents, 1200);
+  assert.equal(PRICE_CATALOG.credits_150.amountCents, 2500);
 });
 
 test('parallel AI reservations count reserved free quota and cannot overspend paid AI games', async () => {

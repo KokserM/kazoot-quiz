@@ -93,11 +93,13 @@ The backend serves `frontend/dist` in production.
 
 1. Create Supabase project and run `backend/db/001_ai_cost_controls.sql`.
 2. Enable Google login in Supabase Auth.
-3. Create Stripe products/prices for Plus 20, Pro 75, and packs 20/60/150.
+3. Create Stripe products/prices for Plus 30 (`€5/month`), Pro 90 (`€12/month`), and packs 20 (`€5`), 60 (`€12`), and 150 (`€25`).
 4. Add the Stripe webhook endpoint: `https://your-domain/api/billing/webhook`.
 5. Test with Stripe test mode before using live price IDs.
-6. Monitor `quiz_generations.estimated_cost_usd`, free usage, AI-game grant balances, and failed/refunded generations.
-7. Start with conservative caps and adjust pricing after real token usage data.
+6. Keep display prices in `backend/src/billing/stripeBillingService.js` synchronized with Stripe prices.
+7. If Plus subscribers already received a current grant below 30 credits before the Plus 30 change, review and optionally run `backend/db/002_plus_30_top_up.sql`.
+8. Monitor `quiz_generations.estimated_cost_usd`, free usage, AI-game grant balances, and failed/refunded generations.
+9. Start with conservative caps and adjust pricing after real token usage data.
 
 ## Scale runbook
 

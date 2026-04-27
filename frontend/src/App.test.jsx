@@ -28,6 +28,7 @@ import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlay
 import { getSupportEmail } from './lib/support';
 import { getOAuthRedirectTo } from './lib/supabase';
 import { getSignedOutAuthCopy, getUsageSummaryLabel } from './components/AccountStatusBar';
+import { formatPlanPrice, formatPricePerAiGame, getPlanCreditLine } from './pages/AccountPage';
 
 afterEach(() => {
   cleanup();
@@ -337,6 +338,14 @@ test('formats monthly AI games left copy', () => {
       credits: 20,
     })
   ).toBe('3 free this month · 20 paid AI games left');
+});
+
+test('formats visible billing plan prices and AI-game lines', () => {
+  expect(formatPlanPrice({ amountCents: 500, currency: 'EUR', interval: 'month' })).toBe('€5 / month');
+  expect(formatPlanPrice({ amountCents: 1200, currency: 'EUR' })).toBe('€12 one-time');
+  expect(formatPricePerAiGame({ pricePerAiGameCents: 17, currency: 'EUR' })).toBe('€0.17 per AI game');
+  expect(getPlanCreditLine({ mode: 'subscription', credits: 30 })).toBe('30 AI games each month');
+  expect(getPlanCreditLine({ mode: 'payment', credits: 20 })).toBe('20 AI games, valid 12 months');
 });
 
 test('prefills host name from Google profile until user edits it', () => {

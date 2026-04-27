@@ -40,23 +40,23 @@ function Shell({ children }) {
 const PLAN_DETAILS = {
   plus_monthly: {
     title: 'Plus monthly',
-    badge: 'Best for regular hosts',
+    badge: 'Regular hosting',
     family: 'Subscription',
-    description: 'For weekly quiz nights, friend groups, and small communities that host regularly.',
+    description: 'For weekly quiz nights and small groups that want a predictable monthly allowance.',
     cta: 'Subscribe to Plus',
   },
   pro_monthly: {
     title: 'Pro monthly',
-    badge: 'Best value',
+    badge: 'Best subscription value',
     family: 'Subscription',
     description: 'For classrooms, teams, events, and hosts who run games more than once a week.',
     cta: 'Subscribe to Pro',
   },
   credits_20: {
     title: 'Pack 20',
-    badge: 'One-time top-up',
+    badge: 'No subscription',
     family: 'AI game pack',
-    description: 'A simple top-up when you want fresh games without starting a subscription.',
+    description: 'A simple one-time top-up when you want fresh games without monthly renewal.',
     cta: 'Buy Pack 20',
   },
   credits_60: {
@@ -74,6 +74,41 @@ const PLAN_DETAILS = {
     cta: 'Buy Pack 150',
   },
 };
+
+export function formatPlanPrice({ amountCents, currency = 'EUR', interval = null }) {
+  if (typeof amountCents !== 'number') {
+    return 'Price shown in checkout';
+  }
+
+  const amount = new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: amountCents % 100 === 0 ? 0 : 2,
+  }).format(amountCents / 100);
+
+  return interval === 'month' ? `${amount} / month` : `${amount} one-time`;
+}
+
+export function formatPricePerAiGame({ pricePerAiGameCents, currency = 'EUR' }) {
+  if (typeof pricePerAiGameCents !== 'number') {
+    return '';
+  }
+
+  const amount = new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(pricePerAiGameCents / 100);
+
+  return `${amount} per AI game`;
+}
+
+export function getPlanCreditLine(plan) {
+  return plan.mode === 'subscription'
+    ? `${plan.credits} AI games each month`
+    : `${plan.credits} AI games, valid 12 months`;
+}
 
 function getPlanDetails(plan) {
   return PLAN_DETAILS[plan.id] || {
@@ -103,6 +138,8 @@ export default function AccountPage() {
   const freeRemainingThisMonth = usage?.freeRemainingThisMonth ?? usage?.freeRemainingToday ?? 0;
   const paidCredits = usage?.credits ?? 0;
   const needsCredits = Boolean(user && usage && freeRemainingThisMonth <= 0 && paidCredits <= 0);
+  const subscriptionPlans = plans.filter((plan) => plan.mode === 'subscription');
+  const packPlans = plans.filter((plan) => plan.mode !== 'subscription');
 
   useEffect(() => {
     fetchBillingCatalog()
@@ -207,46 +244,64 @@ export default function AccountPage() {
               </ButtonRow>
             </Card>
 
-            <Grid gap="16px" columns="repeat(auto-fit, minmax(240px, 1fr))" $mobileColumns="1fr" style={{ marginTop: 24 }}>
-              {plans.map((plan) => {
-                const details = getPlanDetails(plan);
-                const isSubscription = plan.mode === 'subscription';
+            {[
+              ['Monthly plans', subscriptionPlans],
+              ['One-time packs', packPlans],
+            ].map(([groupTitle, groupPlans]) => (
+              groupPlans.length ? (
+                <Stack key={groupTitle} gap="12px" style={{ marginTop: 24 }}>
+                  <SectionTitle style={{ fontSize: '1.35rem' }}>{groupTitle}</SectionTitle>
+                  <Grid gap="16px" columns="repeat(auto-fit, minmax(240px, 1fr))" $mobileColumns="1fr">
+                    {groupPlans.map((plan) => {
+                      const details = getPlanDetails(plan);
+                      const isSubscription = plan.mode === 'subscription';
+                      const pricePerAiGame = formatPricePerAiGame(plan);
 
-                return (
-                  <Card
-                    key={plan.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    style={{ background: isSubscription ? 'rgba(124, 58, 237, 0.16)' : undefined }}
-                  >
-                    <Stack gap="12px" style={{ height: '100%' }}>
-                      <Cluster justify="space-between" align="flex-start">
-                        <Eyebrow>{details.badge}</Eyebrow>
-                        <StatChip>{details.family}</StatChip>
-                      </Cluster>
-                      <SectionTitle style={{ fontSize: '1.2rem' }}>
-                        {details.title}
-                      </SectionTitle>
-                      <Subtitle>{details.description}</Subtitle>
-                      <HelperText>
-                        {plan.credits} AI games {plan.mode === 'subscription' ? 'each month. Unused games roll over for one extra month.' : 'added after payment. Packs last 12 months.'}
-                      </HelperText>
-                      <HelperText>Secure checkout by Stripe.</HelperText>
-                      <Button
-                        type="button"
-                        compact
-                        disabled={!plan.configured || isLoadingPlan === plan.id}
-                        onClick={() => handleCheckout(plan.id)}
-                        whileTap={{ scale: 0.98 }}
-                        style={{ alignSelf: 'center', marginTop: 'auto' }}
-                      >
-                        {isLoadingPlan === plan.id ? 'Opening checkout...' : plan.configured ? details.cta : 'Coming soon'}
-                      </Button>
-                    </Stack>
-                  </Card>
-                );
-              })}
-            </Grid>
+                      return (
+                        <Card
+                          key={plan.id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          style={{ background: isSubscription ? 'rgba(124, 58, 237, 0.16)' : undefined }}
+                        >
+                          <Stack gap="12px" style={{ height: '100%' }}>
+                            <Cluster justify="space-between" align="flex-start">
+                              <Eyebrow>{details.badge}</Eyebrow>
+                              <StatChip>{details.family}</StatChip>
+                            </Cluster>
+                            <SectionTitle style={{ fontSize: '1.2rem' }}>
+                              {details.title}
+                            </SectionTitle>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, letterSpacing: '-0.04em' }}>
+                              {formatPlanPrice(plan)}
+                            </div>
+                            <StatChip style={{ width: 'fit-content' }}>{getPlanCreditLine(plan)}</StatChip>
+                            <Subtitle>{details.description}</Subtitle>
+                            <HelperText>
+                              {isSubscription
+                                ? 'Unused subscription games roll over for one extra month.'
+                                : 'Packs are one-time purchases and last 12 months.'}
+                            </HelperText>
+                            {pricePerAiGame ? <HelperText>{pricePerAiGame}</HelperText> : null}
+                            <HelperText>Secure checkout by Stripe.</HelperText>
+                            <Button
+                              type="button"
+                              compact
+                              disabled={!plan.configured || isLoadingPlan === plan.id}
+                              onClick={() => handleCheckout(plan.id)}
+                              whileTap={{ scale: 0.98 }}
+                              style={{ alignSelf: 'center', marginTop: 'auto' }}
+                            >
+                              {isLoadingPlan === plan.id ? 'Opening checkout...' : plan.configured ? details.cta : 'Coming soon'}
+                            </Button>
+                          </Stack>
+                        </Card>
+                      );
+                    })}
+                  </Grid>
+                </Stack>
+              ) : null
+            ))}
             <Card initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: 18 }}>
               <Stack gap="12px">
                 <Eyebrow>Safe checkout, fair credits</Eyebrow>

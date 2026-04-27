@@ -123,11 +123,13 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 - Anonymous hosts can create demo/fallback games, but GPT-5.4 generation requires Google sign-in through Supabase Auth.
 - Signed-in users get 3 free AI-generated games per month by default.
 - Paid usage is shown as AI games left: `1 AI game = 1 generated 10-question quiz`.
-- Suggested starting tiers are Plus (`€5/month`, 20 AI games), Pro (`€12/month`, 75 AI games), and packs 20/60/150.
+- Suggested starting tiers are Plus (`€5/month`, 30 AI games), Pro (`€12/month`, 90 AI games), and packs 20/60/150.
 - Subscription AI games roll over for one extra billing period. Packs expire after 12 months.
 - Stripe Checkout handles payments; Stripe webhooks grant AI games and keep an append-only ledger.
+- Visible prices shown in the app should stay in sync with Stripe: Plus `€5/month` for 30 AI games, Pro `€12/month` for 90 AI games, Pack 20 `€5`, Pack 60 `€12`, and Pack 150 `€25`.
 - Use `VITE_SUPPORT_EMAIL` for the public support address shown in trust copy, policy pages, and contact links. `support@kazoot.app` can be backed by Porkbun email forwarding.
 - Run `backend/db/001_ai_cost_controls.sql` in Supabase before enabling auth or billing.
+- If Plus subscribers already received a current grant below 30 credits before the Plus 30 change, review and optionally run `backend/db/002_plus_30_top_up.sql`.
 - Existing positive paid balances in `usage_ledger` are backfilled into a non-expiring manual AI-game grant when the SQL is applied.
 - Prompt inputs are treated as data and screened for instruction-like text before OpenAI is called.
 
