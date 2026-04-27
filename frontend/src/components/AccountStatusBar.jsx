@@ -29,11 +29,32 @@ const Bar = styled.header`
 `;
 
 const BrandLink = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   color: ${({ theme }) => theme.colors.text};
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   text-decoration: none;
+
+  &:hover {
+    color: ${({ theme }) => theme.colors.text};
+  }
+`;
+
+const BrandMark = styled.img`
+  width: ${({ $dense = false }) => ($dense ? '32px' : '36px')};
+  height: ${({ $dense = false }) => ($dense ? '32px' : '36px')};
+  display: block;
+  border-radius: 11px;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+`;
+
+const BrandName = styled.span`
+  line-height: 1;
 `;
 
 const AccountCluster = styled.div`
@@ -146,7 +167,10 @@ export function AccountStatusBar({ dense = false, mode = 'default' }) {
 
   return (
     <Bar $dense={dense} $mode={mode}>
-      <BrandLink to="/">Kazoot</BrandLink>
+      <BrandLink to="/" aria-label="Kazoot home">
+        <BrandMark src="/favicon-192.png" alt="" $dense={dense} aria-hidden="true" />
+        <BrandName>Kazoot</BrandName>
+      </BrandLink>
 
       <AccountCluster>
         {isJoinMode ? (
