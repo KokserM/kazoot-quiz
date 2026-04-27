@@ -25,6 +25,10 @@ export default function PrivacyPage() {
           body: 'We use data to operate games, manage credits and subscriptions, provide support, prevent fraud and abuse, and maintain service reliability.',
         },
         {
+          title: 'Local preferences',
+          body: 'Kazoot may store local preferences, such as game timer, reveal timing, and language, in your browser so setup is faster next time. For signed-in users, these local preferences are stored under an account-specific browser key. These preferences stay on your device and are not used for advertising.',
+        },
+        {
           title: 'Sharing',
           body: 'We share data only with service providers needed to run Kazoot, such as hosting, authentication, database, Stripe payments, and AI generation providers.',
         },

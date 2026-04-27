@@ -9,6 +9,7 @@ import App, {
   getHostAuthorityLabel,
   getRevealTimingLabel,
   getRemainingQuestionMs,
+  getResultsTitle,
   getSessionPhase,
   getSubmittedAnswerMessage,
   shouldAttemptQuestionResync,
@@ -16,6 +17,13 @@ import App, {
 } from './App';
 import { buildJoinGamePayload, getSocketTransports } from './providers/GameProvider';
 import { INITIAL_AUTH_STATE, reduceAuthSessionState } from './auth/AuthProvider';
+import {
+  DEFAULT_HOST_PREFERENCES,
+  getHostPreferencesStorageKey,
+  loadHostPreferences,
+  normalizeHostPreferences,
+  saveHostPreferences,
+} from './lib/hostPreferences';
 import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlayerSession } from './lib/storage';
 import { getSupportEmail } from './lib/support';
 import { getOAuthRedirectTo } from './lib/supabase';
@@ -210,6 +218,69 @@ test('formats final standings correct-answer count when available', () => {
   expect(formatCorrectAnswerCount({ correctAnswerCount: 7, totalQuestions: 10 })).toBe('7/10 correct');
   expect(formatCorrectAnswerCount({ correctAnswerCount: 0, totalQuestions: 10 })).toBe('0/10 correct');
   expect(formatCorrectAnswerCount({ score: 1200 })).toBe('');
+});
+
+test('host preferences validate values before saving or loading', () => {
+  expect(
+    normalizeHostPreferences({
+      language: 'Estonian',
+      questionTimeLimitMs: '10000',
+      revealTiming: 'all_answered',
+    })
+  ).toEqual({
+    language: 'Estonian',
+    questionTimeLimitMs: '10000',
+    revealTiming: 'all_answered',
+  });
+
+  expect(
+    normalizeHostPreferences({
+      language: 'Secret',
+      questionTimeLimitMs: '99999',
+      revealTiming: 'instant',
+    })
+  ).toEqual(DEFAULT_HOST_PREFERENCES);
+});
+
+test('host preferences use opaque account keys without raw supabase ids', async () => {
+  const rawUserId = '00000000-0000-4000-8000-000000000123';
+  const key = await getHostPreferencesStorageKey(rawUserId);
+
+  expect(key).toMatch(/^kazoot:hostPreferences:user:/);
+  expect(key).not.toContain(rawUserId);
+});
+
+test('anonymous and signed-in host preferences stay separate', async () => {
+  const rawUserId = '00000000-0000-4000-8000-000000000456';
+
+  await saveHostPreferences(null, {
+    language: 'Estonian',
+    questionTimeLimitMs: '5000',
+    revealTiming: 'all_answered',
+  });
+  await saveHostPreferences(rawUserId, {
+    language: 'English',
+    questionTimeLimitMs: '20000',
+    revealTiming: 'timer',
+  });
+
+  await expect(loadHostPreferences(null)).resolves.toEqual({
+    language: 'Estonian',
+    questionTimeLimitMs: '5000',
+    revealTiming: 'all_answered',
+  });
+  await expect(loadHostPreferences(rawUserId)).resolves.toEqual({
+    language: 'English',
+    questionTimeLimitMs: '20000',
+    revealTiming: 'timer',
+  });
+});
+
+test('results title prefers question text with old payload fallback', () => {
+  expect(getResultsTitle({ questionText: 'Which planet is known as the Red Planet?' })).toBe(
+    'Which planet is known as the Red Planet?'
+  );
+  expect(getResultsTitle({ correctAnswer: 1, correctAnswerText: 'Mars' })).toBe('Answer B was correct: Mars');
 });
 
 test('formats reveal timing labels and submitted answer copy', () => {

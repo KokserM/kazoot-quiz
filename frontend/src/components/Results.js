@@ -214,7 +214,16 @@ const WaitingMessage = styled(motion.div)`
 const Results = ({ questionResults, onNextQuestion, isAdmin = false }) => {
   if (!questionResults) return null;
 
-  const { correctAnswer, correctAnswerText, answerStats, leaderboard, isLastQuestion, playerAnswer, allChoices } = questionResults;
+  const {
+    correctAnswer,
+    correctAnswerText,
+    questionText,
+    answerStats,
+    leaderboard,
+    isLastQuestion,
+    playerAnswer,
+    allChoices,
+  } = questionResults;
 
   const answerLabels = ['A', 'B', 'C', 'D'];
   const answerColors = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#a8e6cf'];
@@ -262,7 +271,7 @@ const Results = ({ questionResults, onNextQuestion, isAdmin = false }) => {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.4, type: "spring", bounce: 0.4 }}
       >
-        ✅ Correct Answer: {answerLabels[correctAnswer]} - {correctAnswerText}
+        {questionText || `Correct Answer: ${answerLabels[correctAnswer]} - ${correctAnswerText}`}
       </CorrectAnswer>
 
       <StatsContainer

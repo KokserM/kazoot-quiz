@@ -203,6 +203,7 @@ class GameService {
 
     return {
       roundId: session.currentRoundId,
+      questionText: currentQuestion.question,
       correctAnswer: currentQuestion.correctAnswerIndex,
       correctAnswerText: currentQuestion.choices[currentQuestion.correctAnswerIndex],
       answerStats,

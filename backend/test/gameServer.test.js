@@ -1123,6 +1123,7 @@ test('results payload counts submitted answers across players', async () => {
     runtime.gameService.finishQuestion(sessionDetails.sessionId, questionPayload.roundId);
     const results = await onceEventWithTimeout(host, 'question-results');
 
+    assert.equal(results.questionText, questionPayload.question);
     assert.deepEqual(results.answerStats, [1, 1, 0, 0]);
 
     host.disconnect();
@@ -1181,6 +1182,8 @@ test('rejoining after timeout receives the results snapshot', async () => {
 
     assert.equal(rejoinedPayload.reconnected, true);
     assert.equal(typeof results.correctAnswer, 'number');
+    assert.equal(typeof results.questionText, 'string');
+    assert.equal(results.questionText.length > 0, true);
 
     host.disconnect();
     rejoinedGuest.disconnect();

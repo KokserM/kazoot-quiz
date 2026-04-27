@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { ThemeProvider } from 'styled-components';
 import { motion } from 'framer-motion';
 import { fetchDemoTopics, createSession as requestCreateSession } from './lib/api';
+import { DEFAULT_HOST_PREFERENCES, loadHostPreferences, saveHostPreferences } from './lib/hostPreferences';
 import { loadPlayerSession } from './lib/storage';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import { AccountStatusBar, getDisplayName } from './components/AccountStatusBar';
@@ -255,6 +256,14 @@ export function formatCorrectAnswerCount(player) {
   return `${player.correctAnswerCount}/${player.totalQuestions} correct`;
 }
 
+export function getResultsTitle(results) {
+  if (typeof results?.questionText === 'string' && results.questionText.trim()) {
+    return results.questionText.trim();
+  }
+
+  return `Answer ${String.fromCharCode(65 + results.correctAnswer)} was correct: ${results.correctAnswerText}`;
+}
+
 function MarketingHome() {
   const stats = [
     ['10-question games', 'Short enough for a break, long enough to feel like a real match.'],
@@ -332,13 +341,14 @@ function CreatePage() {
   const [username, setUsername] = useState('');
   const [hasEditedUsername, setHasEditedUsername] = useState(false);
   const [topic, setTopic] = useState('');
-  const [language, setLanguage] = useState('English');
-  const [questionTimeLimitMs, setQuestionTimeLimitMs] = useState('20000');
-  const [revealTiming, setRevealTiming] = useState('timer');
+  const [language, setLanguage] = useState(DEFAULT_HOST_PREFERENCES.language);
+  const [questionTimeLimitMs, setQuestionTimeLimitMs] = useState(DEFAULT_HOST_PREFERENCES.questionTimeLimitMs);
+  const [revealTiming, setRevealTiming] = useState(DEFAULT_HOST_PREFERENCES.revealTiming);
   const [topics, setTopics] = useState([]);
   const [hasOpenAI, setHasOpenAI] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hasLoadedHostPreferences, setHasLoadedHostPreferences] = useState(false);
 
   const timerOptions = [
     ['5000', '5 seconds'],
@@ -395,6 +405,43 @@ function CreatePage() {
       setUsername(nextUsername);
     }
   }, [hasEditedUsername, user, username]);
+
+  useEffect(() => {
+    if (isAuthLoading) {
+      setHasLoadedHostPreferences(false);
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setHasLoadedHostPreferences(false);
+
+    loadHostPreferences(user?.id).then((preferences) => {
+      if (!isCurrent) {
+        return;
+      }
+
+      setLanguage(preferences.language);
+      setQuestionTimeLimitMs(preferences.questionTimeLimitMs);
+      setRevealTiming(preferences.revealTiming);
+      setHasLoadedHostPreferences(true);
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [isAuthLoading, user?.id]);
+
+  useEffect(() => {
+    if (!hasLoadedHostPreferences) {
+      return;
+    }
+
+    saveHostPreferences(user?.id, {
+      language,
+      questionTimeLimitMs,
+      revealTiming,
+    });
+  }, [hasLoadedHostPreferences, language, questionTimeLimitMs, revealTiming, user?.id]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -1205,9 +1252,10 @@ function ResultsView({ results, session, onNextQuestion }) {
       <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
         <Eyebrow>Round recap</Eyebrow>
         <div style={{ marginTop: 16 }}>
-          <SectionTitle>
-            Answer {String.fromCharCode(65 + results.correctAnswer)} was correct: {results.correctAnswerText}
-          </SectionTitle>
+          <SectionTitle>{getResultsTitle(results)}</SectionTitle>
+          {results.questionText ? (
+            <HelperText style={{ marginTop: 10 }}>Correct answer and your pick are highlighted below.</HelperText>
+          ) : null}
         </div>
         {typeof results.playerAnswer === 'number' ? (
           <Banner $tone={results.answerWasCorrect ? 'success' : undefined} style={{ marginTop: 16 }}>
