@@ -87,7 +87,7 @@ export function GameProvider({ children }) {
   const [results, setResults] = useState(null);
   const [gameEnd, setGameEnd] = useState(null);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
   useEffect(() => {
@@ -102,7 +102,7 @@ export function GameProvider({ children }) {
     connectionStatusRef.current = connectionStatus;
   }, [connectionStatus]);
 
-  const showNotice = useCallback((message) => {
+  const showNotice = useCallback((message, { tone = 'info' } = {}) => {
     if (!message) {
       return;
     }
@@ -111,9 +111,13 @@ export function GameProvider({ children }) {
       clearTimeout(notificationTimerRef.current);
     }
 
-    setNotice(message);
+    setNotice({
+      id: Date.now(),
+      message,
+      tone,
+    });
     notificationTimerRef.current = setTimeout(() => {
-      setNotice('');
+      setNotice(null);
     }, 2800);
   }, []);
 
@@ -553,7 +557,7 @@ export function GameProvider({ children }) {
       setGameEnd(null);
       setConnectionStatus('disconnected');
       setError('');
-      setNotice('');
+      setNotice(null);
     },
     []
   );

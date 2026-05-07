@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'rea
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { ThemeProvider } from 'styled-components';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { createNextSession, fetchDemoTopics, createSession as requestCreateSession } from './lib/api';
 import { DEFAULT_HOST_PREFERENCES, loadHostPreferences, saveHostPreferences } from './lib/hostPreferences';
 import { loadPlayerSession } from './lib/storage';
@@ -45,6 +45,8 @@ import {
   StatChip,
   Subtitle,
   Title,
+  ToastCard,
+  ToastViewport,
 } from './components/ui';
 
 const AccountPage = lazy(() => import('./pages/AccountPage'));
@@ -181,6 +183,10 @@ export function getSessionPhase({ activeSession, question, results, gameEnd }) {
 
 export function shouldShowSessionJoinLoading({ activeSession, joinAttempted, hasKnownUsername, error }) {
   return !activeSession && joinAttempted && hasKnownUsername && !error;
+}
+
+export function shouldShowSessionErrorBanner(error) {
+  return Boolean(error);
 }
 
 export function shouldAttemptQuestionResync({ remainingMs, connectionStatus, hasResyncHandler }) {
@@ -1731,6 +1737,32 @@ function JoiningSessionCard({ sessionId }) {
   );
 }
 
+export function SessionToast({ notice }) {
+  const toast = typeof notice === 'string'
+    ? { id: notice, message: notice, tone: 'info' }
+    : notice;
+
+  return (
+    <ToastViewport data-testid="session-toast-viewport" aria-live="polite" aria-atomic="true">
+      <AnimatePresence>
+        {toast?.message ? (
+          <ToastCard
+            key={toast.id || toast.message}
+            $tone={toast.tone}
+            role="status"
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
+            {toast.message}
+          </ToastCard>
+        ) : null}
+      </AnimatePresence>
+    </ToastViewport>
+  );
+}
+
 function SessionPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -1855,9 +1887,9 @@ function SessionPage() {
       dense={Boolean(activeSession && !showLobbyShell)}
       accountBarMode={!activeSession ? 'join' : 'default'}
     >
+      <SessionToast notice={notice} />
       <Grid gap="16px" columns="1fr" $mobileColumns="1fr">
-        {notice ? <Banner>{notice}</Banner> : null}
-        {error ? <Banner $tone="danger">{error}</Banner> : null}
+        {shouldShowSessionErrorBanner(error) ? <Banner $tone="danger">{error}</Banner> : null}
 
         {activeSession ? (
           <>

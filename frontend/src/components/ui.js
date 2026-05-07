@@ -487,6 +487,53 @@ export const Banner = styled(motion.div)`
   backdrop-filter: blur(12px);
 `;
 
+export const ToastViewport = styled.div`
+  position: fixed;
+  top: calc(20px + env(safe-area-inset-top, 0px));
+  right: max(20px, env(safe-area-inset-right, 0px));
+  z-index: 1000;
+  display: flex;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+
+  @media (max-width: 768px) {
+    top: auto;
+    right: 12px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    width: auto;
+  }
+`;
+
+export const ToastCard = styled(motion.div)`
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: ${({ theme }) => theme.radii.sm};
+  border: 1px solid
+    ${({ $tone }) => {
+      if ($tone === 'danger') return 'rgba(239, 68, 68, 0.42)';
+      if ($tone === 'success') return 'rgba(34, 197, 94, 0.34)';
+      if ($tone === 'warning') return 'rgba(245, 158, 11, 0.36)';
+      return 'rgba(56, 189, 248, 0.32)';
+    }};
+  background: ${({ $tone }) => {
+    if ($tone === 'danger') return 'rgba(127, 29, 29, 0.88)';
+    if ($tone === 'success') return 'rgba(20, 83, 45, 0.84)';
+    if ($tone === 'warning') return 'rgba(120, 53, 15, 0.86)';
+    return 'rgba(8, 47, 73, 0.88)';
+  }};
+  color: ${({ theme }) => theme.colors.text};
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.34);
+  backdrop-filter: blur(16px);
+  font-weight: 700;
+  line-height: 1.45;
+  pointer-events: auto;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+`;
+
 export const EmptyState = styled(Card)`
   text-align: center;
   padding: 32px;

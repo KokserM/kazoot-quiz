@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react';
+import { ThemeProvider } from 'styled-components';
 import { afterEach, expect, test } from 'vitest';
 import App, {
   getCreateButtonLabel,
@@ -14,6 +15,8 @@ import App, {
   getResultsTitle,
   getSessionPhase,
   getSubmittedAnswerMessage,
+  SessionToast,
+  shouldShowSessionErrorBanner,
   shouldNavigateAfterSuccessorTransfer,
   shouldAttemptQuestionResync,
   shouldShowSessionJoinLoading,
@@ -32,6 +35,7 @@ import { getSupportEmail } from './lib/support';
 import { getOAuthRedirectTo } from './lib/supabase';
 import { getSignedOutAuthCopy, getUsageSummaryLabel } from './components/AccountStatusBar';
 import { formatPlanPrice, formatPricePerAiGame, getPlanCreditLine } from './pages/AccountPage';
+import { theme } from './styles/theme';
 
 afterEach(() => {
   cleanup();
@@ -161,6 +165,37 @@ test('shows loading state instead of join form during auto-join', () => {
       error: '',
     })
   ).toBe(false);
+});
+
+test('session notices render in an accessible toast layer', () => {
+  render(
+    <ThemeProvider theme={theme}>
+      <SessionToast notice={{ id: 'join-1', message: 'Alex joined the lobby.', tone: 'info' }} />
+    </ThemeProvider>
+  );
+
+  const toastViewport = screen.getByTestId('session-toast-viewport');
+  const toast = screen.getByRole('status');
+
+  expect(toastViewport).toHaveAttribute('aria-live', 'polite');
+  expect(toastViewport).toContainElement(toast);
+  expect(toast).toHaveTextContent('Alex joined the lobby.');
+});
+
+test('session toast layer does not render a status when there is no notice', () => {
+  render(
+    <ThemeProvider theme={theme}>
+      <SessionToast notice={null} />
+    </ThemeProvider>
+  );
+
+  expect(screen.getByTestId('session-toast-viewport')).toBeInTheDocument();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+
+test('blocking session errors still use the in-page error banner path', () => {
+  expect(shouldShowSessionErrorBanner('Only the game host can start the game')).toBe(true);
+  expect(shouldShowSessionErrorBanner('')).toBe(false);
 });
 
 test('successor transfer navigates instead of leaving the active socket session', () => {
