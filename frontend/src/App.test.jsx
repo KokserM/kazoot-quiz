@@ -7,6 +7,7 @@ import App, {
   getCreateLoadingMessages,
   getContinuationInitialFormState,
   formatCorrectAnswerCount,
+  getGameEndActionLayoutColumns,
   getGameEndActionLabels,
   getHostNameAutofill,
   getHostAuthorityLabel,
@@ -254,6 +255,10 @@ test('successor final-screen actions stay distinct from brand-new games', () => 
     'Start a brand-new game',
   ]);
   expect(getGameEndActionLabels({ isHost: false })).toEqual(['Waiting for the host']);
+});
+
+test('final host actions stack under standings on every viewport', () => {
+  expect(getGameEndActionLayoutColumns()).toBe('1fr');
 });
 
 test('successor continuation form starts with a blank topic and editable host rules', () => {

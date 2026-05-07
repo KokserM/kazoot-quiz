@@ -265,6 +265,10 @@ export function getGameEndActionLabels({ isHost }) {
     : ['Waiting for the host'];
 }
 
+export function getGameEndActionLayoutColumns() {
+  return '1fr';
+}
+
 export function getHostNameAutofill({ user, currentUsername = '', hasEditedUsername = false }) {
   if (hasEditedUsername) {
     return currentUsername;
@@ -1519,7 +1523,7 @@ function GameEndView({ leaderboard, session, onCreateNextGame, onLeave }) {
       </Card>
 
       {session?.you?.isHost ? (
-        <Grid gap="18px" columns="1.2fr 0.8fr" $mobileColumns="1fr">
+        <Grid gap="18px" columns={getGameEndActionLayoutColumns()} $mobileColumns="1fr">
           <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} style={{ background: theme.gradients.success }}>
             <Eyebrow>Keep the room together</Eyebrow>
             <SectionTitle style={{ marginTop: 12 }}>{actionLabels[0]}</SectionTitle>
