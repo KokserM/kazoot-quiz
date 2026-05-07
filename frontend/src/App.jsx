@@ -393,7 +393,6 @@ function CreatePage() {
     user,
     hasOpenAI,
   });
-  const actionLabels = getGameEndActionLabels({ isHost: Boolean(session?.you?.isHost) });
   const createLoadingMessages = getCreateLoadingMessages({ user, hasOpenAI });
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const createLoadingMessage = createLoadingMessages[loadingMessageIndex % createLoadingMessages.length];
@@ -1398,6 +1397,7 @@ function GameEndView({ leaderboard, session, onCreateNextGame, onLeave }) {
     user,
     hasOpenAI,
   });
+  const actionLabels = getGameEndActionLabels({ isHost: Boolean(session?.you?.isHost) });
 
   useEffect(() => {
     let isCurrent = true;

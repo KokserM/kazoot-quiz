@@ -46,6 +46,12 @@ test('renders Kazoot marketing headline', () => {
   ).toBeInTheDocument();
 });
 
+test('renders create route without requiring game session state', async () => {
+  window.history.pushState({}, '', '/create');
+  render(<App />);
+  expect(await screen.findByText(/Checking your sign-in|How would you like to host|Create your game/i)).toBeInTheDocument();
+});
+
 test('renders trust footer with support and policy links', () => {
   render(<App />);
   expect(screen.getByText(/Questions before buying/i)).toBeInTheDocument();
