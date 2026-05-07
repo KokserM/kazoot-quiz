@@ -269,6 +269,14 @@ export function getGameEndActionLayoutColumns() {
   return '1fr';
 }
 
+export function getNextGameRulesLayoutColumns() {
+  return '1fr';
+}
+
+export function getNextGameOptionGridColumns(minWidth = '150px') {
+  return `repeat(auto-fit, minmax(${minWidth}, 1fr))`;
+}
+
 export function getHostNameAutofill({ user, currentUsername = '', hasEditedUsername = false }) {
   if (hasEditedUsername) {
     return currentUsername;
@@ -1563,7 +1571,7 @@ function GameEndView({ leaderboard, session, onCreateNextGame, onLeave }) {
                 </Cluster>
               ) : null}
 
-              <FormGrid columns="repeat(auto-fit, minmax(220px, 1fr))" $mobileColumns="1fr" style={{ marginTop: 18 }}>
+              <FormGrid columns={getNextGameRulesLayoutColumns()} $mobileColumns="1fr" style={{ marginTop: 18 }}>
                 <div>
                   <Label htmlFor="next-language">Question language</Label>
                   <Select
@@ -1578,7 +1586,7 @@ function GameEndView({ leaderboard, session, onCreateNextGame, onLeave }) {
                 </div>
                 <div>
                   <Label>Answer reveal</Label>
-                  <Cluster style={{ marginTop: 8 }}>
+                  <Grid gap="12px" columns={getNextGameOptionGridColumns('190px')} $mobileColumns="1fr" style={{ marginTop: 8 }}>
                     {revealTimingOptions.map(([value, label]) => (
                       <Button
                         key={value}
@@ -1588,17 +1596,18 @@ function GameEndView({ leaderboard, session, onCreateNextGame, onLeave }) {
                         disabled={isLoading}
                         onClick={() => setRevealTiming(value)}
                         whileTap={{ scale: 0.98 }}
+                        style={{ width: '100%' }}
                       >
                         {label}
                       </Button>
                     ))}
-                  </Cluster>
+                  </Grid>
                 </div>
               </FormGrid>
 
               <div style={{ marginTop: 18 }}>
                 <Label>Question timer</Label>
-                <Cluster style={{ marginTop: 8 }}>
+                <Grid gap="12px" columns={getNextGameOptionGridColumns('120px')} $mobileColumns="1fr" style={{ marginTop: 8 }}>
                   {timerOptions.map(([value, label]) => (
                     <Button
                       key={value}
@@ -1608,11 +1617,12 @@ function GameEndView({ leaderboard, session, onCreateNextGame, onLeave }) {
                       disabled={isLoading}
                       onClick={() => setQuestionTimeLimitMs(value)}
                       whileTap={{ scale: 0.98 }}
+                      style={{ width: '100%' }}
                     >
                       {label}
                     </Button>
                   ))}
-                </Cluster>
+                </Grid>
               </div>
 
               <ButtonRow style={{ marginTop: 22 }}>

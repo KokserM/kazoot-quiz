@@ -11,6 +11,8 @@ import App, {
   getGameEndActionLabels,
   getHostNameAutofill,
   getHostAuthorityLabel,
+  getNextGameOptionGridColumns,
+  getNextGameRulesLayoutColumns,
   getRevealTimingLabel,
   getRemainingQuestionMs,
   getResultsTitle,
@@ -259,6 +261,12 @@ test('successor final-screen actions stay distinct from brand-new games', () => 
 
 test('final host actions stack under standings on every viewport', () => {
   expect(getGameEndActionLayoutColumns()).toBe('1fr');
+});
+
+test('next-game rules stack and use equal-width option grids on desktop', () => {
+  expect(getNextGameRulesLayoutColumns()).toBe('1fr');
+  expect(getNextGameOptionGridColumns('190px')).toBe('repeat(auto-fit, minmax(190px, 1fr))');
+  expect(getNextGameOptionGridColumns('120px')).toBe('repeat(auto-fit, minmax(120px, 1fr))');
 });
 
 test('successor continuation form starts with a blank topic and editable host rules', () => {
