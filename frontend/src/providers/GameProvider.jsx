@@ -28,6 +28,18 @@ export function buildJoinGamePayload({ sessionId, username, isCreator = false, h
   return payload;
 }
 
+export function persistNextGameSession(payload) {
+  savePlayerSession(payload.sessionId, {
+    playerToken: payload.playerToken,
+    hostToken: payload.hostToken,
+    playerId: payload.playerId,
+    username: payload.you?.username || payload.username,
+  });
+  if (payload.previousSessionId) {
+    markPlayerSessionEnded(payload.previousSessionId);
+  }
+}
+
 function logSocketEvent(eventName, details = {}) {
   if (!import.meta.env.PROD) {
     return;
@@ -213,6 +225,28 @@ export function GameProvider({ children }) {
         playerId: payload.playerId,
         reconnected: payload.reconnected,
         gameState: payload.gameState,
+      });
+    });
+
+    socket.on('next-game-ready', (payload) => {
+      awaitingJoinRef.current = false;
+      joinIntentRef.current = {
+        sessionId: payload.sessionId,
+        username: payload.you?.username || payload.username,
+        isCreator: Boolean(payload.you?.isHost),
+        hostToken: payload.hostToken || null,
+        forceFresh: false,
+      };
+      setSession(payload);
+      setQuestion(null);
+      setResults(null);
+      setGameEnd(null);
+      persistNextGameSession(payload);
+      showNotice(payload.reconnected ? 'Moved to the next game.' : 'The next game is ready.');
+      logSocketEvent('next_game_ready', {
+        previousSessionId: payload.previousSessionId,
+        sessionId: payload.sessionId,
+        playerId: payload.playerId,
       });
     });
 

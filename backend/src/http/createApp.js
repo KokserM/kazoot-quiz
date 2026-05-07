@@ -289,6 +289,31 @@ function createApp({ gameService, store, questionService, authService, aiUsageSe
     }
   });
 
+  app.post('/api/sessions/:sessionId/next', async (req, res) => {
+    try {
+      const limit = createSessionLimiter.consume(`next:${getClientIp(req)}`);
+      if (!limit.allowed) {
+        res.status(429).json({ error: 'Too many rooms created from this network. Please try again later.' });
+        return;
+      }
+
+      const user = await getOptionalUser(req, authService);
+      const session = await gameService.createSuccessorSession(
+        {
+          ...req.body,
+          sourceSessionId: req.params.sessionId,
+        },
+        {
+          user,
+          ipAddress: getClientIp(req),
+        }
+      );
+      res.json(session);
+    } catch (error) {
+      res.status(400).json({ error: formatValidationError(error) });
+    }
+  });
+
   if (config.nodeEnv === 'production') {
     const frontendDir = resolveFrontendDir();
     app.use(express.static(frontendDir));

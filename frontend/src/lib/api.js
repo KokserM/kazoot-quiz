@@ -39,6 +39,14 @@ export function createSession(payload, accessToken = null) {
   });
 }
 
+export function createNextSession(sourceSessionId, payload, accessToken = null) {
+  return request(`/api/sessions/${sourceSessionId}/next`, {
+    method: 'POST',
+    accessToken,
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchDemoTopics() {
   return request('/api/demo-topics');
 }

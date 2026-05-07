@@ -70,6 +70,8 @@ class GameSession {
     this.hostOwnerToken = randomUUID();
     this.hostOwnerPlayerId = null;
     this.temporaryHostPlayerId = null;
+    this.successorSessionId = null;
+    this.successorPlayerTokenMap = new Map();
   }
 
   touch() {
@@ -216,6 +218,21 @@ class GameSession {
 
     this.refreshHostAuthority({ preserveTemporaryHost: false });
 
+    this.touch();
+    return player;
+  }
+
+  markTransferred(playerId) {
+    const player = this.players.get(playerId);
+    if (!player) {
+      return null;
+    }
+
+    player.connected = false;
+    player.socketId = null;
+    player.isHost = false;
+    player.isTemporaryHost = false;
+    player.hostAuthority = 'none';
     this.touch();
     return player;
   }

@@ -1,5 +1,6 @@
 const { ZodError } = require('zod');
 const {
+  createNextSessionSchema,
   createSessionSchema,
   generateQuizSchema,
   joinGameSchema,
@@ -150,6 +151,148 @@ class GameService {
       questionSource: session.questionSource,
       hostToken: session.hostOwnerToken,
     };
+  }
+
+  buildJoinedPayload(session, player, extras = {}) {
+    return {
+      ...session.toSessionSummary(player.playerId),
+      isAdmin: player.isHost,
+      playerId: player.playerId,
+      playerToken: player.playerToken,
+      hostToken: player.hostAuthority === 'owner' ? player.hostToken : null,
+      ...extras,
+    };
+  }
+
+  async createSuccessorSession(payload, context = {}) {
+    const {
+      sourceSessionId,
+      hostToken,
+      topic,
+      language,
+      questionTimeLimitMs,
+      revealTiming,
+    } = createNextSessionSchema.parse(payload);
+    const sourceSession = this.store.getSession(sourceSessionId);
+
+    if (!sourceSession) {
+      throw new Error('Game session not found');
+    }
+
+    if (sourceSession.gameState !== 'ended') {
+      throw new Error('Create the next game after the final standings are shown.');
+    }
+
+    if (!sourceSession.isValidHostToken(hostToken)) {
+      throw new Error('Only the original host can create the next game for this group.');
+    }
+
+    if (sourceSession.successorSessionId) {
+      const existingSuccessor = this.store.getSession(sourceSession.successorSessionId);
+      if (existingSuccessor) {
+        this.emitSuccessorReady(sourceSession, existingSuccessor);
+        return {
+          ...existingSuccessor.toSessionSummary(),
+          sessionId: existingSuccessor.id,
+          hostToken: existingSuccessor.hostOwnerToken,
+          previousSessionId: sourceSession.id,
+          transferredPlayerCount: existingSuccessor.players.size,
+          reused: true,
+        };
+      }
+
+      sourceSession.successorSessionId = null;
+      sourceSession.successorPlayerTokenMap.clear();
+    }
+
+    const activeSessions = this.store.getHealthSnapshot().activeSessions;
+    if (activeSessions >= this.config.maxActiveSessions) {
+      throw new Error('The server is at the active room limit. Try again in a few minutes.');
+    }
+
+    const transferablePlayers = sourceSession.getConnectedPlayers();
+    if (transferablePlayers.length === 0) {
+      throw new Error('No connected players are available to move into the next game.');
+    }
+
+    const quiz = await this.generateQuizForContext({ topic, language }, context);
+    const validatedQuiz = quizSchema.parse(quiz);
+    const successorSession = this.store.createSession({
+      topic: validatedQuiz.topic,
+      language: validatedQuiz.language,
+      questions: validatedQuiz.questions,
+      questionSource: quiz.source || 'demo',
+      questionTimeLimitMs,
+      revealTiming,
+    });
+
+    sourceSession.successorSessionId = successorSession.id;
+    sourceSession.successorPlayerTokenMap.clear();
+
+    transferablePlayers.forEach((sourcePlayer) => {
+      const socketId = sourcePlayer.socketId;
+      const isOwnerHost = sourcePlayer.playerId === sourceSession.hostOwnerPlayerId;
+      const successorPlayer = successorSession.addPlayer({
+        username: sourcePlayer.username,
+        socketId,
+        hostToken: isOwnerHost ? successorSession.hostOwnerToken : null,
+      });
+
+      sourceSession.successorPlayerTokenMap.set(sourcePlayer.playerToken, {
+        sessionId: successorSession.id,
+        playerToken: successorPlayer.playerToken,
+        playerId: successorPlayer.playerId,
+        hostToken: successorPlayer.hostAuthority === 'owner' ? successorPlayer.hostToken : null,
+      });
+
+      if (socketId) {
+        const socket = this.io.sockets.sockets.get(socketId);
+        socket?.leave(sourceSession.id);
+        socket?.join(successorSession.id);
+        if (socket) {
+          socket.data.sessionId = successorSession.id;
+          socket.data.playerId = successorPlayer.playerId;
+          socket.data.playerToken = successorPlayer.playerToken;
+          socket.data.hostToken = successorPlayer.hostToken || null;
+        }
+        this.store.bindSocket({
+          sessionId: successorSession.id,
+          playerId: successorPlayer.playerId,
+          socketId,
+        });
+      }
+
+      sourceSession.markTransferred(sourcePlayer.playerId);
+    });
+
+    sourceSession.refreshHostAuthority({ preserveTemporaryHost: false });
+    sourceSession.touch();
+    this.emitSuccessorReady(sourceSession, successorSession);
+    this.emitSessionUpdate(successorSession);
+
+    this.log('successor_session_created', {
+      sourceSessionId: sourceSession.id,
+      successorSessionId: successorSession.id,
+      transferredPlayerCount: successorSession.players.size,
+    });
+
+    return {
+      ...successorSession.toSessionSummary(),
+      sessionId: successorSession.id,
+      hostToken: successorSession.hostOwnerToken,
+      previousSessionId: sourceSession.id,
+      transferredPlayerCount: successorSession.players.size,
+      reused: false,
+    };
+  }
+
+  emitSuccessorReady(sourceSession, successorSession) {
+    successorSession.players.forEach((player) => {
+      this.emitToPlayer(player, 'next-game-ready', this.buildJoinedPayload(successorSession, player, {
+        previousSessionId: sourceSession.id,
+        reconnected: false,
+      }));
+    });
   }
 
   async generateQuiz(payload, context = {}) {
@@ -320,6 +463,41 @@ class GameService {
       throw new Error('Game session not found');
     }
 
+    const successorMapping = payload.playerToken
+      ? session.successorPlayerTokenMap?.get(payload.playerToken)
+      : null;
+    const successorSession = successorMapping
+      ? this.store.getSession(successorMapping.sessionId)
+      : null;
+    const successorPlayer = successorSession
+      ? successorSession.getPlayerByToken(successorMapping.playerToken)
+      : null;
+    if (session.gameState === 'ended' && successorSession && successorPlayer) {
+      successorSession.reconnectPlayer(successorPlayer, socket.id, payload.username, {
+        hostToken: successorMapping.hostToken || payload.hostToken,
+      });
+      socket.leave(session.id);
+      socket.join(successorSession.id);
+      this.store.bindSocket({
+        sessionId: successorSession.id,
+        playerId: successorPlayer.playerId,
+        socketId: socket.id,
+      });
+      socket.data.sessionId = successorSession.id;
+      socket.data.playerId = successorPlayer.playerId;
+      socket.data.playerToken = successorPlayer.playerToken;
+      socket.data.hostToken = successorPlayer.hostToken || null;
+
+      const readyPayload = this.buildJoinedPayload(successorSession, successorPlayer, {
+        previousSessionId: session.id,
+        reconnected: true,
+      });
+      socket.emit('next-game-ready', readyPayload);
+      this.emitSessionUpdate(successorSession);
+      this.emitPhaseSnapshot(successorSession, successorPlayer);
+      return readyPayload;
+    }
+
     let player = null;
     let reconnected = false;
     const hostBeforeJoin = session.getHost();
@@ -373,14 +551,7 @@ class GameService {
     socket.data.playerToken = player.playerToken;
     socket.data.hostToken = player.hostToken || payload.hostToken || null;
 
-    const joinedPayload = {
-      ...session.toSessionSummary(player.playerId),
-      isAdmin: player.isHost,
-      playerId: player.playerId,
-      playerToken: player.playerToken,
-      hostToken: player.hostAuthority === 'owner' ? player.hostToken : null,
-      reconnected,
-    };
+    const joinedPayload = this.buildJoinedPayload(session, player, { reconnected });
 
     socket.emit('joined-game', joinedPayload);
     this.emitSessionUpdate(session);

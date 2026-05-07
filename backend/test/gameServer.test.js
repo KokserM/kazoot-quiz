@@ -1445,3 +1445,186 @@ test('starting a new round clears the previous timer', async () => {
     await runtime.close();
   }
 });
+
+test('host can create a successor game that transfers connected players with fresh rules', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const sessionDetails = await createSession(runtime.baseUrl, 'Space & Astronomy', {
+      questionTimeLimitMs: 5000,
+      revealTiming: 'timer',
+    });
+    const host = connectClient(runtime.baseUrl);
+    const guest = connectClient(runtime.baseUrl);
+
+    const hostJoined = onceEventWithTimeout(host, 'joined-game');
+    host.emit('join-game', {
+      sessionId: sessionDetails.sessionId,
+      username: 'Host',
+      isCreator: true,
+      hostToken: sessionDetails.hostToken,
+    });
+    const hostState = await hostJoined;
+
+    const guestJoined = onceEventWithTimeout(guest, 'joined-game');
+    guest.emit('join-game', {
+      sessionId: sessionDetails.sessionId,
+      username: 'Guest',
+    });
+    const guestState = await guestJoined;
+
+    const sourceSession = runtime.store.getSession(sessionDetails.sessionId);
+    sourceSession.players.get(hostState.playerId).score = 999;
+    sourceSession.players.get(hostState.playerId).answers = {
+      0: { isCorrect: true, points: 999 },
+    };
+    sourceSession.gameState = 'ended';
+    sourceSession.endedAt = Date.now();
+    sourceSession.touch();
+
+    const hostNext = onceEventWithTimeout(host, 'next-game-ready');
+    const guestNext = onceEventWithTimeout(guest, 'next-game-ready');
+    const response = await fetch(`${runtime.baseUrl}/api/sessions/${sessionDetails.sessionId}/next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hostToken: sessionDetails.hostToken,
+        topic: 'Video Games',
+        language: 'Estonian',
+        questionTimeLimitMs: 10000,
+        revealTiming: 'all_answered',
+      }),
+    });
+    const responsePayload = await response.json();
+    const hostPayload = await hostNext;
+    const guestPayload = await guestNext;
+    const successorSession = runtime.store.getSession(responsePayload.sessionId);
+
+    assert.equal(response.status, 200);
+    assert.notEqual(responsePayload.sessionId, sessionDetails.sessionId);
+    assert.equal(responsePayload.reused, false);
+    assert.equal(hostPayload.previousSessionId, sessionDetails.sessionId);
+    assert.equal(guestPayload.previousSessionId, sessionDetails.sessionId);
+    assert.equal(hostPayload.you?.isHost, true);
+    assert.equal(hostPayload.hostToken, successorSession.hostOwnerToken);
+    assert.equal(guestPayload.you?.isHost, false);
+    assert.equal(guestPayload.hostToken, null);
+    assert.equal(successorSession.topic, 'Video Games');
+    assert.equal(successorSession.language, 'Estonian');
+    assert.equal(successorSession.questionTimeLimitMs, 10000);
+    assert.equal(successorSession.revealTiming, 'all_answered');
+    assert.equal(successorSession.players.size, 2);
+    assert.equal(successorSession.getConnectedPlayers().length, 2);
+    assert.equal(sourceSession.getConnectedPlayers().length, 0);
+    assert.equal(runtime.store.getBySocketId(host.id).session.id, successorSession.id);
+    assert.equal(runtime.store.getBySocketId(guest.id).session.id, successorSession.id);
+
+    const successorHost = successorSession.getPlayerByToken(hostPayload.playerToken);
+    assert.equal(successorHost.score, 0);
+    assert.deepEqual(successorHost.answers, {});
+    assert.notEqual(hostPayload.playerToken, hostState.playerToken);
+    assert.notEqual(guestPayload.playerToken, guestState.playerToken);
+
+    const questionStarted = onceEventWithTimeout(host, 'question-start');
+    host.emit('start-game');
+    const questionPayload = await questionStarted;
+    assert.equal(questionPayload.timeLimit, 10000);
+    assert.equal(questionPayload.revealTiming, 'all_answered');
+
+    guest.disconnect();
+    await delay(50);
+
+    const returningGuest = connectClient(runtime.baseUrl);
+    const rejoined = onceEventWithTimeout(returningGuest, 'joined-game');
+    returningGuest.emit('join-game', {
+      sessionId: successorSession.id,
+      username: 'Guest',
+      playerToken: guestPayload.playerToken,
+    });
+    const rejoinedPayload = await rejoined;
+    assert.equal(rejoinedPayload.reconnected, true);
+    assert.equal(rejoinedPayload.playerId, guestPayload.playerId);
+
+    returningGuest.disconnect();
+    host.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('successor game creation is host-only and idempotent without changing fresh rooms', async () => {
+  const runtime = await startTestServer();
+
+  try {
+    const sessionDetails = await createSession(runtime.baseUrl, '90s Movies');
+    const host = connectClient(runtime.baseUrl);
+
+    const hostJoined = onceEventWithTimeout(host, 'joined-game');
+    host.emit('join-game', {
+      sessionId: sessionDetails.sessionId,
+      username: 'Host',
+      isCreator: true,
+      hostToken: sessionDetails.hostToken,
+    });
+    await hostJoined;
+
+    const sourceSession = runtime.store.getSession(sessionDetails.sessionId);
+    sourceSession.gameState = 'ended';
+    sourceSession.endedAt = Date.now();
+    sourceSession.touch();
+
+    const rejected = await fetch(`${runtime.baseUrl}/api/sessions/${sessionDetails.sessionId}/next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hostToken: 'not-the-host-token',
+        topic: 'Video Games',
+        language: 'English',
+      }),
+    });
+    assert.equal(rejected.status, 400);
+
+    const firstReady = onceEventWithTimeout(host, 'next-game-ready');
+    const first = await fetch(`${runtime.baseUrl}/api/sessions/${sessionDetails.sessionId}/next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hostToken: sessionDetails.hostToken,
+        topic: 'Video Games',
+        language: 'English',
+        questionTimeLimitMs: 5000,
+        revealTiming: 'timer',
+      }),
+    });
+    const firstPayload = await first.json();
+    await firstReady;
+
+    const secondReady = onceEventWithTimeout(host, 'next-game-ready');
+    const second = await fetch(`${runtime.baseUrl}/api/sessions/${sessionDetails.sessionId}/next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hostToken: sessionDetails.hostToken,
+        topic: 'Space & Astronomy',
+        language: 'Estonian',
+        questionTimeLimitMs: 20000,
+        revealTiming: 'all_answered',
+      }),
+    });
+    const secondPayload = await second.json();
+    await secondReady;
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal(firstPayload.sessionId, secondPayload.sessionId);
+    assert.equal(secondPayload.reused, true);
+    assert.equal(runtime.store.getSession(firstPayload.sessionId).topic, 'Video Games');
+
+    const standalone = await createSession(runtime.baseUrl, 'Space & Astronomy');
+    assert.equal(runtime.store.getSession(standalone.sessionId).players.size, 0);
+
+    host.disconnect();
+  } finally {
+    await runtime.close();
+  }
+});

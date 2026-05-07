@@ -30,8 +30,16 @@ const createSessionSchema = z.object({
 
 const generateQuizSchema = createSessionSchema;
 
+const sessionIdSchema = z.string().trim().toUpperCase().regex(/^(?:[A-Z0-9]{6}|[A-Z0-9]{8}|[A-Z0-9]{10})$/);
+
+const createNextSessionSchema = createSessionSchema.extend({
+  sourceSessionId: sessionIdSchema,
+  hostToken: z.string().trim().min(8).max(128),
+  carryPolicy: z.literal('connected_only').default('connected_only'),
+});
+
 const joinGameSchema = z.object({
-  sessionId: z.string().trim().toUpperCase().regex(/^(?:[A-Z0-9]{6}|[A-Z0-9]{8}|[A-Z0-9]{10})$/),
+  sessionId: sessionIdSchema,
   username: z.string().trim().min(2).max(32),
   playerToken: z.string().trim().min(8).max(128).optional(),
   hostToken: z.string().trim().min(8).max(128).optional(),
@@ -44,6 +52,7 @@ const submitAnswerSchema = z.object({
 });
 
 module.exports = {
+  createNextSessionSchema,
   createSessionSchema,
   generateQuizSchema,
   joinGameSchema,

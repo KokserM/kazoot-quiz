@@ -3,7 +3,7 @@ import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams
 import { QRCodeSVG } from 'qrcode.react';
 import { ThemeProvider } from 'styled-components';
 import { motion } from 'framer-motion';
-import { fetchDemoTopics, createSession as requestCreateSession } from './lib/api';
+import { createNextSession, fetchDemoTopics, createSession as requestCreateSession } from './lib/api';
 import { DEFAULT_HOST_PREFERENCES, loadHostPreferences, saveHostPreferences } from './lib/hostPreferences';
 import { loadPlayerSession } from './lib/storage';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
@@ -236,6 +236,29 @@ export function getCreateLoadingMessages({ user, hasOpenAI }) {
       ];
 }
 
+export function getContinuationInitialFormState(preferences = DEFAULT_HOST_PREFERENCES) {
+  return {
+    topic: '',
+    language: preferences.language,
+    questionTimeLimitMs: preferences.questionTimeLimitMs,
+    revealTiming: preferences.revealTiming,
+  };
+}
+
+export function shouldNavigateAfterSuccessorTransfer({ session, currentSessionId }) {
+  return Boolean(
+    session &&
+    session.sessionId !== currentSessionId &&
+    session.previousSessionId === currentSessionId
+  );
+}
+
+export function getGameEndActionLabels({ isHost }) {
+  return isHost
+    ? ['Play another with this group', 'Start a brand-new game']
+    : ['Waiting for the host'];
+}
+
 export function getHostNameAutofill({ user, currentUsername = '', hasEditedUsername = false }) {
   if (hasEditedUsername) {
     return currentUsername;
@@ -370,6 +393,7 @@ function CreatePage() {
     user,
     hasOpenAI,
   });
+  const actionLabels = getGameEndActionLabels({ isHost: Boolean(session?.you?.isHost) });
   const createLoadingMessages = getCreateLoadingMessages({ user, hasOpenAI });
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const createLoadingMessage = createLoadingMessages[loadingMessageIndex % createLoadingMessages.length];
@@ -1340,9 +1364,105 @@ function ResultsView({ results, session, onNextQuestion }) {
   );
 }
 
-function GameEndView({ leaderboard, onLeave }) {
+function GameEndView({ leaderboard, session, onCreateNextGame, onLeave }) {
+  const { usage, user } = useAuth();
   const podium = leaderboard.slice(0, 3);
   const everyoneElse = leaderboard.slice(3);
+  const initialContinuationForm = getContinuationInitialFormState();
+  const [topic, setTopic] = useState(initialContinuationForm.topic);
+  const [language, setLanguage] = useState(initialContinuationForm.language);
+  const [questionTimeLimitMs, setQuestionTimeLimitMs] = useState(initialContinuationForm.questionTimeLimitMs);
+  const [revealTiming, setRevealTiming] = useState(initialContinuationForm.revealTiming);
+  const [topics, setTopics] = useState([]);
+  const [hasOpenAI, setHasOpenAI] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [hasLoadedHostPreferences, setHasLoadedHostPreferences] = useState(false);
+  const timerOptions = [
+    ['5000', '5 seconds'],
+    ['10000', '10 seconds'],
+    ['15000', '15 seconds'],
+    ['20000', '20 seconds'],
+  ];
+  const revealTimingOptions = [
+    ['timer', 'Full suspense'],
+    ['all_answered', 'Reveal when everyone answers'],
+  ];
+  const freeRemainingThisMonth = usage?.freeRemainingThisMonth ?? usage?.freeRemainingToday ?? 0;
+  const paidCredits = usage?.credits ?? 0;
+  const hasAiBalance = freeRemainingThisMonth > 0 || paidCredits > 0;
+  const isSignedInAiBlocked = Boolean(hasOpenAI && user && usage && !hasAiBalance);
+  const createButtonLabel = getCreateButtonLabel({
+    isLoading,
+    isSignedInAiBlocked,
+    user,
+    hasOpenAI,
+  });
+
+  useEffect(() => {
+    let isCurrent = true;
+    fetchDemoTopics()
+      .then((data) => {
+        if (!isCurrent) {
+          return;
+        }
+        setTopics(data.topics || []);
+        setHasOpenAI(Boolean(data.hasOpenAI));
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setTopics([]);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+    setHasLoadedHostPreferences(false);
+    loadHostPreferences(user?.id).then((preferences) => {
+      if (!isCurrent) {
+        return;
+      }
+
+      setLanguage(preferences.language);
+      setQuestionTimeLimitMs(preferences.questionTimeLimitMs);
+      setRevealTiming(preferences.revealTiming);
+      setHasLoadedHostPreferences(true);
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [user?.id]);
+
+  async function handleCreateNextGame(event) {
+    event.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    try {
+      if (hasLoadedHostPreferences) {
+        await saveHostPreferences(user?.id, {
+          language,
+          questionTimeLimitMs,
+          revealTiming,
+        });
+      }
+      await onCreateNextGame({
+        topic,
+        language,
+        questionTimeLimitMs: Number(questionTimeLimitMs),
+        revealTiming,
+      });
+    } catch (requestError) {
+      setError(requestError.message);
+      setIsLoading(false);
+    }
+  }
 
   return (
     <Grid gap="18px">
@@ -1390,15 +1510,150 @@ function GameEndView({ leaderboard, onLeave }) {
           </Grid>
         ) : null}
 
-        <ButtonRow style={{ marginTop: 24 }}>
-          <Button as={Link} to="/create">
-            Host another game
-          </Button>
-          <Button type="button" variant="secondary" onClick={onLeave} whileTap={{ scale: 0.98 }}>
-            Back home
-          </Button>
-        </ButtonRow>
       </Card>
+
+      {session?.you?.isHost ? (
+        <Grid gap="18px" columns="1.2fr 0.8fr" $mobileColumns="1fr">
+          <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} style={{ background: theme.gradients.success }}>
+            <Eyebrow>Keep the room together</Eyebrow>
+            <SectionTitle style={{ marginTop: 12 }}>{actionLabels[0]}</SectionTitle>
+            <Subtitle style={{ marginTop: 8 }}>
+              Pick the next topic and rules. Everyone who is still connected will move to the next
+              lobby automatically.
+            </Subtitle>
+
+            {error ? <Banner $tone="danger" style={{ marginTop: 16 }}>{error}</Banner> : null}
+
+            <form onSubmit={handleCreateNextGame} style={{ marginTop: 18 }}>
+              <Label htmlFor="next-topic">Next topic</Label>
+              <Input
+                id="next-topic"
+                value={topic}
+                onChange={(event) => setTopic(event.target.value)}
+                placeholder="Music trivia, Champions League, sci-fi movies..."
+                disabled={isLoading}
+                required
+              />
+
+              {topics.length ? (
+                <Cluster style={{ marginTop: 12 }}>
+                  {topics.slice(0, 4).map((suggestion) => (
+                    <Button
+                      key={suggestion}
+                      type="button"
+                      variant="secondary"
+                      compact
+                      disabled={isLoading}
+                      onClick={() => setTopic(suggestion)}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      {suggestion}
+                    </Button>
+                  ))}
+                </Cluster>
+              ) : null}
+
+              <FormGrid columns="repeat(auto-fit, minmax(220px, 1fr))" $mobileColumns="1fr" style={{ marginTop: 18 }}>
+                <div>
+                  <Label htmlFor="next-language">Question language</Label>
+                  <Select
+                    id="next-language"
+                    value={language}
+                    onChange={(event) => setLanguage(event.target.value)}
+                    disabled={isLoading}
+                  >
+                    <option value="English">English</option>
+                    <option value="Estonian">Eesti keel</option>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Answer reveal</Label>
+                  <Cluster style={{ marginTop: 8 }}>
+                    {revealTimingOptions.map(([value, label]) => (
+                      <Button
+                        key={value}
+                        type="button"
+                        variant={revealTiming === value ? 'primary' : 'secondary'}
+                        compact
+                        disabled={isLoading}
+                        onClick={() => setRevealTiming(value)}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </Cluster>
+                </div>
+              </FormGrid>
+
+              <div style={{ marginTop: 18 }}>
+                <Label>Question timer</Label>
+                <Cluster style={{ marginTop: 8 }}>
+                  {timerOptions.map(([value, label]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant={questionTimeLimitMs === value ? 'primary' : 'secondary'}
+                      compact
+                      disabled={isLoading}
+                      onClick={() => setQuestionTimeLimitMs(value)}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </Cluster>
+              </div>
+
+              <ButtonRow style={{ marginTop: 22 }}>
+                <Button
+                  type="submit"
+                  disabled={!topic.trim() || isLoading || isSignedInAiBlocked}
+                  whileTap={{ scale: !topic.trim() || isLoading || isSignedInAiBlocked ? 1 : 0.98 }}
+                >
+                  {isLoading ? <Spinner aria-hidden="true" /> : null}
+                  <span style={{ marginLeft: isLoading ? 8 : 0 }}>{createButtonLabel}</span>
+                </Button>
+                {isSignedInAiBlocked ? (
+                  <Button as={Link} to="/account" variant="secondary">
+                    View plans
+                  </Button>
+                ) : null}
+              </ButtonRow>
+            </form>
+          </Card>
+
+          <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <Eyebrow>Separate room</Eyebrow>
+            <SectionTitle style={{ marginTop: 12 }}>{actionLabels[1]}</SectionTitle>
+            <Subtitle style={{ marginTop: 8 }}>
+              Use this when you want a separate room and a new invite code. Players will need to
+              join again.
+            </Subtitle>
+            <ButtonRow style={{ marginTop: 22 }}>
+              <Button as={Link} to="/create" variant="secondary">
+                {actionLabels[1]}
+              </Button>
+              <Button type="button" variant="ghost" onClick={onLeave} whileTap={{ scale: 0.98 }}>
+                Back home
+              </Button>
+            </ButtonRow>
+          </Card>
+        </Grid>
+      ) : (
+        <Card initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <SectionTitle>{actionLabels[0]}</SectionTitle>
+          <Subtitle style={{ marginTop: 8 }}>
+            If the host sets up another game for this group, you will move to the next lobby
+            automatically.
+          </Subtitle>
+          <ButtonRow style={{ marginTop: 22 }}>
+            <Button type="button" variant="secondary" onClick={onLeave} whileTap={{ scale: 0.98 }}>
+              Back home
+            </Button>
+          </ButtonRow>
+        </Card>
+      )}
     </Grid>
   );
 }
@@ -1484,6 +1739,7 @@ function SessionPage() {
   const sessionState = location.state || {};
   const savedSession = useMemo(() => loadPlayerSession(normalizedSessionId), [normalizedSessionId]);
   const joinAttemptedRef = useRef(false);
+  const { accessToken, refreshUsage } = useAuth();
   const {
     clearError,
     connectionStatus,
@@ -1503,10 +1759,22 @@ function SessionPage() {
 
   useEffect(() => {
     if (session && session.sessionId !== normalizedSessionId) {
+      if (shouldNavigateAfterSuccessorTransfer({ session, currentSessionId: normalizedSessionId })) {
+        navigate(`/session/${session.sessionId}`, {
+          replace: true,
+          state: {
+            username: session.you?.username,
+            isCreator: Boolean(session.you?.isHost),
+            hostToken: session.hostToken || null,
+          },
+        });
+        return;
+      }
+
       leaveSession(session.sessionId);
       joinAttemptedRef.current = false;
     }
-  }, [leaveSession, normalizedSessionId, session]);
+  }, [leaveSession, navigate, normalizedSessionId, session]);
 
   useEffect(() => {
     if (session?.sessionId === normalizedSessionId || joinAttemptedRef.current) {
@@ -1549,6 +1817,18 @@ function SessionPage() {
   function handleJoinAsDifferentPlayer() {
     leaveSession(normalizedSessionId, { forgetPlayer: true });
     joinAttemptedRef.current = false;
+  }
+
+  async function handleCreateNextGame(payload) {
+    if (!activeSession?.hostToken) {
+      throw new Error('Only the original host can create the next game for this group.');
+    }
+
+    await createNextSession(normalizedSessionId, {
+      ...payload,
+      hostToken: activeSession.hostToken,
+    }, accessToken);
+    await refreshUsage();
   }
 
   const activeSession = session?.sessionId === normalizedSessionId ? session : null;
@@ -1616,7 +1896,12 @@ function SessionPage() {
               <ResultsView results={results} session={activeSession} onNextQuestion={nextQuestion} />
             ) : null}
             {showGameEndShell ? (
-              <GameEndView leaderboard={gameEnd.leaderboard} onLeave={handleGoHome} />
+              <GameEndView
+                leaderboard={gameEnd.leaderboard}
+                session={activeSession}
+                onCreateNextGame={handleCreateNextGame}
+                onLeave={handleGoHome}
+              />
             ) : null}
           </>
         ) : showJoinLoading ? (

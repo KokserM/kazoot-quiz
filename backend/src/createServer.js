@@ -86,6 +86,7 @@ function createServer() {
   });
 
   placeholderGameService.createSession = gameService.createSession.bind(gameService);
+  placeholderGameService.createSuccessorSession = gameService.createSuccessorSession.bind(gameService);
   placeholderGameService.generateQuiz = gameService.generateQuiz.bind(gameService);
   registerSocketHandlers(io, gameService);
 

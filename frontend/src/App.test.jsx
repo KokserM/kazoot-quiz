@@ -4,7 +4,9 @@ import App, {
   getCreateButtonLabel,
   getCreateLoadingMessage,
   getCreateLoadingMessages,
+  getContinuationInitialFormState,
   formatCorrectAnswerCount,
+  getGameEndActionLabels,
   getHostNameAutofill,
   getHostAuthorityLabel,
   getRevealTimingLabel,
@@ -12,10 +14,11 @@ import App, {
   getResultsTitle,
   getSessionPhase,
   getSubmittedAnswerMessage,
+  shouldNavigateAfterSuccessorTransfer,
   shouldAttemptQuestionResync,
   shouldShowSessionJoinLoading,
 } from './App';
-import { buildJoinGamePayload, getSocketTransports } from './providers/GameProvider';
+import { buildJoinGamePayload, getSocketTransports, persistNextGameSession } from './providers/GameProvider';
 import { INITIAL_AUTH_STATE, reduceAuthSessionState } from './auth/AuthProvider';
 import {
   DEFAULT_HOST_PREFERENCES,
@@ -152,6 +155,79 @@ test('shows loading state instead of join form during auto-join', () => {
       error: '',
     })
   ).toBe(false);
+});
+
+test('successor transfer navigates instead of leaving the active socket session', () => {
+  expect(
+    shouldNavigateAfterSuccessorTransfer({
+      currentSessionId: 'OLDROOM123',
+      session: {
+        sessionId: 'NEWROOM456',
+        previousSessionId: 'OLDROOM123',
+      },
+    })
+  ).toBe(true);
+
+  expect(
+    shouldNavigateAfterSuccessorTransfer({
+      currentSessionId: 'OTHERROOM1',
+      session: {
+        sessionId: 'NEWROOM456',
+        previousSessionId: 'OLDROOM123',
+      },
+    })
+  ).toBe(false);
+});
+
+test('successor game local storage saves the new seat and expires the old one', () => {
+  savePlayerSession('OLDROOM123', {
+    playerToken: 'old-player-token',
+    hostToken: 'old-host-token',
+    playerId: 'old-player-id',
+    username: 'Host',
+  });
+
+  persistNextGameSession({
+    previousSessionId: 'OLDROOM123',
+    sessionId: 'NEWROOM456',
+    playerToken: 'new-player-token',
+    hostToken: 'new-host-token',
+    playerId: 'new-player-id',
+    you: {
+      username: 'Host',
+    },
+  });
+
+  expect(loadPlayerSession('NEWROOM456')).toMatchObject({
+    playerToken: 'new-player-token',
+    hostToken: 'new-host-token',
+    playerId: 'new-player-id',
+    username: 'Host',
+  });
+  expect(loadPlayerSession('OLDROOM123', { allowUsernameMismatch: true }).gameEndedAt).toEqual(expect.any(Number));
+});
+
+test('successor final-screen actions stay distinct from brand-new games', () => {
+  expect(getGameEndActionLabels({ isHost: true })).toEqual([
+    'Play another with this group',
+    'Start a brand-new game',
+  ]);
+  expect(getGameEndActionLabels({ isHost: false })).toEqual(['Waiting for the host']);
+});
+
+test('successor continuation form starts with a blank topic and editable host rules', () => {
+  expect(
+    getContinuationInitialFormState({
+      language: 'Estonian',
+      questionTimeLimitMs: '10000',
+      revealTiming: 'all_answered',
+    })
+  ).toEqual({
+    topic: '',
+    language: 'Estonian',
+    questionTimeLimitMs: '10000',
+    revealTiming: 'all_answered',
+  });
 });
 
 test('only attempts timeout resync when disconnected', () => {
