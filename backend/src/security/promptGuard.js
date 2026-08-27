@@ -57,21 +57,42 @@ function containsPromptLeak(value) {
 }
 
 function validateGeneratedQuizSafety(quiz) {
+  const normalizedQuestions = new Set();
+  const normalizedChoiceSets = new Set();
+  const answerIndexCounts = [0, 0, 0, 0];
+
   for (const question of quiz.questions || []) {
     if (containsPromptLeak(question.question)) {
       throw new Error('Generated question leaked prompt instructions');
     }
 
+    const normalizedQuestion = normalizePlainText(question.question).toLowerCase();
+    if (normalizedQuestions.has(normalizedQuestion)) {
+      throw new Error('Generated quiz contains duplicate question text');
+    }
+    normalizedQuestions.add(normalizedQuestion);
+
     const normalizedChoices = question.choices.map((choice) => normalizePlainText(choice).toLowerCase());
     if (new Set(normalizedChoices).size !== normalizedChoices.length) {
       throw new Error('Generated question contains duplicate choices');
     }
+    const normalizedChoiceSet = [...normalizedChoices].sort().join('|');
+    if (normalizedChoiceSets.has(normalizedChoiceSet)) {
+      throw new Error('Generated quiz contains a repeated choice set');
+    }
+    normalizedChoiceSets.add(normalizedChoiceSet);
+
+    answerIndexCounts[question.correctAnswerIndex] += 1;
 
     for (const choice of question.choices) {
       if (containsPromptLeak(choice)) {
         throw new Error('Generated choice leaked prompt instructions');
       }
     }
+  }
+
+  if (answerIndexCounts.some((count) => count === 0) || answerIndexCounts.some((count) => count > 3)) {
+    throw new Error('Generated quiz has an unbalanced correct-answer distribution');
   }
 
   return quiz;

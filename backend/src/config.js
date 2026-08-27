@@ -20,8 +20,9 @@ const DEFAULT_DAILY_OPENAI_BUDGET_USD = 10;
 const DEFAULT_MONTHLY_OPENAI_BUDGET_USD = 100;
 const DEFAULT_MAX_AI_GENERATIONS_PER_USER_PER_HOUR = 5;
 const DEFAULT_MAX_AI_GENERATIONS_PER_IP_PER_HOUR = 10;
-const DEFAULT_OPENAI_EST_INPUT_COST_PER_1M = 2.5;
-const DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M = 15;
+const DEFAULT_OPENAI_MODEL = 'gpt-5.6-sol';
+const DEFAULT_OPENAI_EST_INPUT_COST_PER_1M = 4;
+const DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M = 20;
 const DEFAULT_CREATE_SESSION_RATE_LIMIT_PER_15_MIN = 20;
 const DEFAULT_JOIN_RATE_LIMIT_PER_MIN = 30;
 const DEFAULT_FAILED_JOIN_RATE_LIMIT_PER_15_MIN = 20;
@@ -139,9 +140,9 @@ const config = {
     process.env.SOCKET_MAX_HTTP_BUFFER_SIZE,
     DEFAULT_SOCKET_MAX_HTTP_BUFFER_SIZE
   ),
-  openAiModel: process.env.OPENAI_MODEL || 'gpt-5.4',
-  aiModelFreeTier: process.env.AI_MODEL_FREE_TIER || process.env.OPENAI_MODEL || 'gpt-5.4',
-  aiModelPaidTier: process.env.AI_MODEL_PAID_TIER || process.env.OPENAI_MODEL || 'gpt-5.4',
+  openAiModel: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+  aiModelFreeTier: process.env.AI_MODEL_FREE_TIER || process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+  aiModelPaidTier: process.env.AI_MODEL_PAID_TIER || process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
   freeAiGamesPerMonth: toNumber(
     process.env.FREE_AI_GAMES_PER_MONTH || process.env.FREE_AI_GAMES_PER_DAY,
     DEFAULT_FREE_AI_GAMES_PER_MONTH
@@ -243,6 +244,9 @@ function isOriginAllowed(origin) {
 }
 
 module.exports = {
+  DEFAULT_OPENAI_EST_INPUT_COST_PER_1M,
+  DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M,
+  DEFAULT_OPENAI_MODEL,
   config,
   isOriginAllowed,
 };

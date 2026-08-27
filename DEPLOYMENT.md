@@ -23,7 +23,9 @@ NODE_ENV=production
 FRONTEND_URL=https://your-service-or-custom-domain
 CORS_ALLOWED_ORIGINS=https://your-service-or-custom-domain,https://your-custom-domain
 OPENAI_API_KEY=sk-...         # optional
-OPENAI_MODEL=gpt-5.4          # optional
+OPENAI_MODEL=gpt-5.6-sol      # optional
+OPENAI_EST_INPUT_COST_PER_1M=4   # current GPT-5.6 Sol estimate
+OPENAI_EST_OUTPUT_COST_PER_1M=20 # current GPT-5.6 Sol estimate
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
 STRIPE_SECRET_KEY=sk_live_...
@@ -54,6 +56,7 @@ Notes:
 
 - Do not hardcode `PORT` in Railway. The platform injects it automatically.
 - If `OPENAI_API_KEY` is missing, Kazoot falls back to demo question sets.
+- Keep the OpenAI cost-estimate variables aligned with current API pricing so budget tracking remains accurate.
 - `FRONTEND_URL` should match the public domain you want to allow through CORS.
 - Use `CORS_ALLOWED_ORIGINS` for any extra custom domains or Railway aliases; production no longer trusts every `*.railway.app` origin by default.
 - Run `backend/db/001_ai_cost_controls.sql` in Supabase before setting live Stripe prices.
@@ -85,7 +88,7 @@ The backend serves `frontend/dist` in production.
 - Host changes are broadcast automatically if the current host disconnects.
 - Sessions are cleaned up after inactivity.
 - Hosts can choose whether results reveal when the timer ends or when all connected players have answered.
-- GPT-5.4 generation requires a signed-in host and consumes free monthly quota or paid AI games.
+- GPT-5.6 Sol generation requires a signed-in host and consumes free monthly quota or paid AI games.
 - Anonymous hosts can still create demo/fallback games without spending GPT tokens.
 - `GET /health` includes store mode, active sessions, sessions by state, socket index size, uptime, memory usage, event-loop delay, configured limits, and degraded reasons.
 
@@ -128,6 +131,21 @@ After deploy, verify:
 4. Refreshing a player tab reconnects the player instead of duplicating them
 5. Finishing a round shows identical results to all players
 
+## GPT model rollout and rollback
+
+For the Railway service serving `https://kazoot.app`:
+
+1. Choose a quiet deployment window because changing Railway variables restarts the process and ends active in-memory games.
+2. Confirm the service is still scaled to exactly one replica.
+3. Set `OPENAI_MODEL=gpt-5.6-sol`, `OPENAI_EST_INPUT_COST_PER_1M=4`, and `OPENAI_EST_OUTPUT_COST_PER_1M=20`.
+4. Deploy and confirm the startup log reports `Question model: gpt-5.6-sol`.
+5. Verify `https://kazoot.app/health` returns `200`.
+6. Create a signed-in AI game and a successor game; confirm both produce 10 generated questions rather than demo fallback.
+7. Confirm `quiz_generations` records model `gpt-5.6-sol`, token counts, successful status, and plausible estimated cost.
+8. Verify anonymous demo creation, player joining, reconnect, and live round synchronization still work.
+
+To roll back, restore `OPENAI_MODEL=gpt-5.4`, `OPENAI_EST_INPUT_COST_PER_1M=2.5`, and `OPENAI_EST_OUTPUT_COST_PER_1M=15`, then redeploy.
+
 ## Troubleshooting
 
 ### Session resets after restart
@@ -144,8 +162,8 @@ That is expected if the service runs with more than one replica. Kazoot does not
 - Verify `FRONTEND_URL` matches the public origin
 - Check Railway logs for CORS errors
 
-### GPT-5.4 generation falls back to demo data
+### GPT-5.6 Sol generation falls back to demo data
 
 - Confirm `OPENAI_API_KEY` is present and valid
 - Check the server logs for OpenAI errors
-- Make sure your account has access to `gpt-5.4`
+- Make sure your OpenAI project has access to `gpt-5.6-sol`

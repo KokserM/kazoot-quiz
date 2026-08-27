@@ -1,10 +1,10 @@
 # Kazoot
 
-Kazoot is a modern Kahoot-style quiz app with GPT-5.4 question generation, Railway-friendly realtime multiplayer, and a rebuilt Vite frontend.
+Kazoot is a modern Kahoot-style quiz app with GPT-5.6 Sol question generation, Railway-friendly realtime multiplayer, and a rebuilt Vite frontend.
 
 ## What changed
 
-- GPT-5.4 questions now use structured JSON output plus duplicate filtering within the running service.
+- GPT-5.6 Sol questions use validated JSON output, requested-difficulty handling, and duplicate/variety filtering within the running service.
 - Multiplayer uses a server-authoritative round engine with reconnect tokens, guarded state transitions, and idempotent scoring.
 - The frontend is now a routed Vite app with a cleaner session shell, better responsive layout, and reconnect-aware join flows.
 - Railway, Docker, and local development all target the same single-instance deployment model.
@@ -21,7 +21,7 @@ Kazoot is a modern Kahoot-style quiz app with GPT-5.4 question generation, Railw
 
 - Node.js 20 or newer
 - npm
-- An OpenAI API key if you want live GPT-5.4 quiz generation
+- An OpenAI API key with GPT-5.6 Sol access if you want live AI quiz generation
 
 ### Install
 
@@ -65,7 +65,9 @@ Only add `https://www.kazoot.app/**` if the `www` domain is live. Only add Railw
 Optional settings:
 
 ```powershell
-OPENAI_MODEL=gpt-5.4
+OPENAI_MODEL=gpt-5.6-sol
+OPENAI_EST_INPUT_COST_PER_1M=4
+OPENAI_EST_OUTPUT_COST_PER_1M=20
 QUESTION_TIME_LIMIT_MS=20000
 SESSION_RETENTION_MS=1800000
 ENDED_SESSION_RETENTION_MS=600000
@@ -120,7 +122,7 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 
 ## AI generation and billing
 
-- Anonymous hosts can create demo/fallback games, but GPT-5.4 generation requires Google sign-in through Supabase Auth.
+- Anonymous hosts can create demo/fallback games, but GPT-5.6 Sol generation requires Google sign-in through Supabase Auth.
 - Signed-in users get 3 free AI-generated games per month by default.
 - Paid usage is shown as AI games left: `1 AI game = 1 generated 10-question quiz`.
 - Suggested starting tiers are Plus (`€5/month`, 30 AI games), Pro (`€12/month`, 90 AI games), and packs 20/60/150.
@@ -132,6 +134,7 @@ The frontend runs on `http://localhost:3000` and the backend runs on `http://loc
 - If Plus subscribers already received a current grant below 30 credits before the Plus 30 change, review and optionally run `backend/db/002_plus_30_top_up.sql`.
 - Existing positive paid balances in `usage_ledger` are backfilled into a non-expiring manual AI-game grant when the SQL is applied.
 - Prompt inputs are treated as data and screened for instruction-like text before OpenAI is called.
+- Difficulty qualifiers in a topic are honored. For example, `90s PC games medium difficulty trivia` creates a consistently medium-difficulty quiz; topics without a level use a mixed difficulty.
 
 ## Realtime behavior
 
