@@ -1,7 +1,7 @@
 {
-  "name": "kazoot-backend",
+  "name": "kazoot",
   "version": "1.0.0",
-  "description": "A Kahoot-style quiz application with AI-generated questions",
+  "description": "Kazoot live multiplayer quiz",
   "main": "backend/server.js",
   "scripts": {
     "start": "cd backend && npm start",
@@ -9,12 +9,12 @@
     "server": "cd backend && npm run dev",
     "client": "cd frontend && npm start",
     "build": "cd frontend && npm run build",
-    "test": "cd backend && npm test && cd ..\\frontend && npm test"
+    "test": "npm --prefix backend test && npm --prefix frontend test"
   },
   "dependencies": {
     "concurrently": "^8.2.2"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   }
-} 
+}
