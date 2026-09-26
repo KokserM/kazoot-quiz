@@ -5,7 +5,7 @@ import { Icon } from '../Icon';
 import { Spinner } from '../ui';
 
 // Answer states, each distinct in shape, label and icon — never colour alone:
-//   available   bright fill, navy text                     (tap me)
+//   available   bright fill, dark text                     (tap me)
 //   chosen      bright fill + thick ring, "Sending…"/"Locked in"   (neutral: not a verdict)
 //   other       outline only, full-contrast text           (after you chose)
 //   correct     fill + green ring + "✓ Correct"            (only after the reveal)
@@ -75,7 +75,7 @@ const tileStyles = css`
       other: outlined,
       correct: css`
         ${filled}
-        box-shadow: 0 0 0 3px var(--paper), 0 0 0 7px var(--correct-ring);
+        box-shadow: 0 0 0 3px var(--paper), 0 0 0 6px var(--correct-ring);
       `,
       incorrect: outlined,
     })[$state]}
@@ -139,8 +139,8 @@ const Tag = styled.span`
   ${({ $tone }) =>
     ({
       neutral: css`
-        background: #0b1020;
-        color: #f8fafc;
+        background: var(--answer-ink);
+        color: #ffffff;
       `,
       correct: css`
         background: var(--correct-ring);
@@ -149,7 +149,6 @@ const Tag = styled.span`
       yours: css`
         background: var(--danger-soft);
         color: var(--danger);
-        border: 1px solid currentColor;
       `,
     })[$tone]}
 `;

@@ -63,7 +63,11 @@ test('landing page leads with the host-plays-too promise and both calls to actio
   expect(screen.getAllByRole('link', { name: 'Try a free demo' })[0]).toHaveAttribute('href', '/demo');
   expect(screen.getByRole('link', { name: 'Create a quiz' })).toHaveAttribute('href', '/create');
   // Pricing comes from the server catalog, not hard-coded copy.
-  expect(await screen.findByText('€5 / month')).toBeInTheDocument();
+  // Every offer is actionable: paid plans go through the account page (sign-in, consent, Stripe).
+  expect(await screen.findByRole('link', { name: 'Subscribe to Plus' })).toHaveAttribute('href', '/account?buy=plus_monthly');
+  expect(screen.getByRole('link', { name: 'Buy Pack 20' })).toHaveAttribute('href', '/account?buy=credits_20');
+  expect(screen.getByRole('link', { name: 'Start free' })).toHaveAttribute('href', '/create');
+  expect(screen.getByRole('heading', { name: 'Plus' }).closest('article')).toHaveTextContent('€5/ month30 AI games every month');
   expect(screen.getByText(/AI can be wrong/)).toBeInTheDocument();
   expect(navigator.sendBeacon).toHaveBeenCalled();
 });
@@ -199,7 +203,10 @@ test('text colour tokens meet WCAG AA contrast in light and dark themes', () => 
   }
   const pairs = [
     ['ink', 'paper'], ['ink-2', 'paper'], ['ink-3', 'paper'], ['ink-3', 'surface'], ['ink-3', 'surface-sunk'],
-    ['accent-ink', 'accent'], ['accent-ink', 'accent-hover'], ['accent-text', 'paper'], ['accent-text', 'surface'], ['success', 'paper'], ['danger', 'paper'], ['warning', 'paper'],
+    ['accent-ink', 'accent'], ['accent-ink', 'accent-hover'], ['accent-ink', 'accent-2'], ['accent-ink', 'accent-2-hover'],
+    ['accent-text', 'paper'], ['accent-text', 'surface'], ['accent-text', 'accent-soft'], ['brand-a', 'paper'], ['brand-b', 'paper'],
+    ['ink-2', 'band'], ['ink-3', 'band'], ['accent-text', 'band'],
+    ['success', 'paper'], ['danger', 'paper'], ['warning', 'paper'],
     ['danger', 'danger-soft'], ['success', 'success-soft'], ['warning', 'warning-soft'],
   ];
   for (const theme of [l, d]) {

@@ -1,74 +1,90 @@
-// Colour tokens. Two themes share one set of names:
-//  - LIGHT: the site (landing, setup, pricing, account). Cool, crisp, calm.
+// Colour tokens, taken from the logo: an ultraviolet K whose stroke runs from
+// violet through magenta, on a near-black aubergine tile. Two themes share one set of names:
+//  - LIGHT: the site (landing, setup, pricing, account). Cool white, violet actions.
 //  - STAGE: the live game (lobby, questions, results) and dark-mode users.
-//    Midnight navy so vivid answer tiles and the timer carry the energy.
+//    The logo's aubergine, so the answer tiles and the timer carry the energy.
+// Brand colours (violet, magenta) are for actions and emphasis only; answer tiles
+// have their own palette so a tile is never mistaken for a button or a selection.
 // Every text pair used in the UI meets WCAG AA (tested in App.test.jsx).
 // GlobalStyle turns these into CSS variables.
 
+const ANSWERS = {
+  // Bright fills with dark text (never white-on-mid-tone). Not red/green: those mean wrong/right.
+  'answer-a': '#22D3EE',
+  'answer-b': '#FF7AB6',
+  'answer-c': '#FFC53D',
+  'answer-d': '#8FB0FF',
+  'answer-ink': '#140E22',
+};
+
 export const LIGHT_COLORS = {
-  paper: '#F6F8FC',
+  paper: '#F8F7FC',
   surface: '#FFFFFF',
-  'surface-sunk': '#EDF1F8',
-  ink: '#0B1020',
-  'ink-2': '#334062',
-  'ink-3': '#56617C',
-  line: '#DBE2EE',
-  'line-strong': '#7D88A1',
+  'surface-sunk': '#F1EEF8',
+  // Alternating page sections. Always recedes behind cards (surface) in both themes.
+  band: '#F1EEF8',
+  ink: '#140E22',
+  'ink-2': '#3D3553',
+  'ink-3': '#5E5673',
+  line: '#E2DDEE',
+  'line-strong': '#857C9C',
 
-  accent: '#2563EB',
-  'accent-hover': '#1D4ED8',
+  // Primary actions: violet → magenta, the direction of the K's stroke.
+  accent: '#7C3AED',
+  'accent-hover': '#6D28D9',
+  'accent-2': '#C026D3',
+  'accent-2-hover': '#A21CAF',
   'accent-ink': '#FFFFFF',
-  'accent-soft': '#E3EBFF',
-  'accent-text': '#1D4ED8',
+  'accent-soft': '#F1EAFF',
+  'accent-text': '#6D28D9',
+  // Emphasis text (hero line): ends of the brand gradient, both readable on paper.
+  'brand-a': '#7C3AED',
+  'brand-b': '#D01F6E',
 
-  success: '#166534',
+  success: '#15803D',
   'success-soft': '#DCFCE7',
-  danger: '#B91C1C',
-  'danger-soft': '#FEE2E2',
+  danger: '#BE123C',
+  'danger-soft': '#FFE4E9',
   warning: '#92400E',
   'warning-soft': '#FEF3C7',
 
-  focus: '#2563EB',
+  focus: '#6D28D9',
 
-  // Answer tiles use navy text on bright fills (never white-on-mid-tone).
-  'answer-a': '#22D3EE',
-  'answer-b': '#F472B6',
-  'answer-c': '#FBBF24',
-  'answer-d': '#A5B4FC',
-  'answer-ink': '#0B1020',
+  ...ANSWERS,
   'correct-ring': '#16A34A',
 };
 
 export const STAGE_COLORS = {
-  paper: '#0B1020',
-  surface: '#141C30',
-  'surface-sunk': '#1B2440',
-  ink: '#F8FAFC',
-  'ink-2': '#CBD5E1',
-  'ink-3': '#94A3B8',
-  line: '#25304D',
-  'line-strong': '#5B6785',
+  paper: '#100A1C',
+  surface: '#1A1229',
+  'surface-sunk': '#251B3A',
+  band: '#150E23',
+  ink: '#FAF7FF',
+  'ink-2': '#D9D1EB',
+  'ink-3': '#A99FC4',
+  line: '#34294D',
+  'line-strong': '#7A6FA3',
 
-  accent: '#2563EB',
-  'accent-hover': '#3366F0',
+  accent: '#7C3AED',
+  'accent-hover': '#6D28D9',
+  'accent-2': '#C026D3',
+  'accent-2-hover': '#A21CAF',
   'accent-ink': '#FFFFFF',
-  'accent-soft': '#1C2B57',
-  'accent-text': '#A5B4FC',
+  'accent-soft': '#2C1F50',
+  'accent-text': '#C9B8FF',
+  'brand-a': '#B79CFF',
+  'brand-b': '#FF7AB6',
 
   success: '#4ADE80',
-  'success-soft': '#10261C',
-  danger: '#FCA5A5',
-  'danger-soft': '#2A1520',
+  'success-soft': '#0F2A1C',
+  danger: '#FDA4AF',
+  'danger-soft': '#3A1426',
   warning: '#FCD34D',
-  'warning-soft': '#2A220C',
+  'warning-soft': '#2E2410',
 
-  focus: '#F8FAFC',
+  focus: '#F5F0FF',
 
-  'answer-a': '#22D3EE',
-  'answer-b': '#F472B6',
-  'answer-c': '#FBBF24',
-  'answer-d': '#A5B4FC',
-  'answer-ink': '#0B1020',
+  ...ANSWERS,
   'correct-ring': '#4ADE80',
 };
 

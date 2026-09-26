@@ -10,21 +10,28 @@ export const GlobalStyle = createGlobalStyle`
     ${toCssVariables(LIGHT_COLORS)}
     --font-display: 'Bricolage Grotesque Variable', 'Segoe UI', system-ui, sans-serif;
     --font-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
-    --shadow: 0 1px 2px rgba(11, 16, 32, 0.05), 0 6px 20px -8px rgba(11, 16, 32, 0.12);
+    --shadow: 0 1px 2px rgba(20, 14, 34, 0.05), 0 8px 24px -12px rgba(20, 14, 34, 0.14);
+    --shadow-raised: 0 2px 4px rgba(20, 14, 34, 0.06), 0 22px 40px -18px rgba(76, 29, 149, 0.35);
+    --shadow-action: 0 1px 0 rgba(255, 255, 255, 0.22) inset, 0 10px 22px -12px rgba(124, 58, 237, 0.85);
+    --brand-gradient: linear-gradient(115deg, var(--accent) 0%, var(--accent-2) 100%);
+    --brand-gradient-hover: linear-gradient(115deg, var(--accent-hover) 0%, var(--accent-2-hover) 100%);
     --radius: 12px;
     --radius-lg: 18px;
     --gutter: clamp(16px, 4vw, 32px);
     --max: 1120px;
-
-    --coral: #B45309;
+    --header-h: 64px;
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-spring: cubic-bezier(0.34, 1.45, 0.5, 1);
     color-scheme: light;
+
+    @media (max-width: 560px) { --header-h: 56px; }
   }
 
   /* Live game screens (and the landing preview) always use the stage theme. */
   :root[data-stage='true'], [data-stage-scope] {
     ${toCssVariables(STAGE_COLORS)}
-    --coral: var(--warning);
-    --shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+    --shadow: 0 0 0 1px rgba(255, 255, 255, 0.03);
+    --shadow-raised: 0 0 0 1px rgba(201, 184, 255, 0.12), 0 24px 44px -20px rgba(0, 0, 0, 0.8);
     color-scheme: dark;
   }
 
@@ -32,13 +39,21 @@ export const GlobalStyle = createGlobalStyle`
     :root {
       ${toCssVariables(STAGE_COLORS)}
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --shadow-raised: 0 0 0 1px rgba(201, 184, 255, 0.12), 0 24px 44px -20px rgba(0, 0, 0, 0.8);
       color-scheme: dark;
     }
   }
 
   *, *::before, *::after { box-sizing: border-box; }
 
-  html { -webkit-text-size-adjust: 100%; }
+  /* Anchor targets and focused elements land below the sticky header. */
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: calc(var(--header-h) + 16px);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
 
   body {
     margin: 0;
@@ -69,6 +84,7 @@ export const GlobalStyle = createGlobalStyle`
   a:hover { color: var(--ink); }
 
   button, input, select, textarea { font: inherit; color: inherit; }
+  input[type='radio'], input[type='checkbox'] { accent-color: var(--accent); }
 
   :focus-visible {
     outline: 3px solid var(--focus);
@@ -80,6 +96,11 @@ export const GlobalStyle = createGlobalStyle`
   [tabindex='-1']:focus { outline: none; }
 
   ::selection { background: var(--accent-soft); color: var(--ink); }
+
+  dialog::backdrop {
+    background: rgba(16, 10, 28, 0.6);
+    backdrop-filter: blur(2px);
+  }
 
   img, svg { display: block; max-width: 100%; }
 

@@ -106,16 +106,22 @@ frontend/src/
 
 ## Design system
 
-- **Two themes, one set of tokens** (`frontend/src/styles/tokens.js`): a crisp light theme for
-  the site (landing, setup, pricing, account) and a midnight-navy **stage** theme for every live
-  game screen (`<html data-stage="true">`) and the landing-page preview (`data-stage-scope`).
-  Dark-mode users get the stage palette everywhere.
-- **Action colour:** electric blue `#2563EB` with white text (5.2:1). Blue *text* uses
-  `--accent-text` (dark blue on light, periwinkle on navy).
-- **Answer tiles:** cyan, pink, amber, periwinkle with navy text (7–11:1), always with a letter,
-  never shapes. Chosen, correct and incorrect are distinguished by ring, fill, icon and label —
-  a selection is never styled like a correct answer. Tile focus is dashed so it can't be confused
-  with the solid rings.
+- **Palette from the logo** (`frontend/src/styles/tokens.js`): the K's violet → magenta stroke on
+  an aubergine tile. A cool-white light theme for the site (landing, setup, pricing, account) and
+  an aubergine **stage** theme for every live game screen (`<html data-stage="true">`), the
+  landing preview and closing panel (`data-stage-scope`). Dark-mode users get the stage palette.
+- **Action colour:** violet `#7C3AED` → magenta `#C026D3` (`--brand-gradient`), white text
+  (5.7:1 / 4.7:1). It is the only gradient in the UI and marks the primary action; repeated
+  actions (one per pricing card) use the quieter `tonal` button. Violet *text* is `--accent-text`.
+- **Answer tiles:** cyan, pink, amber, periwinkle with dark text, always with a letter, never
+  shapes, never red/green (those mean wrong/right) and never the brand violet. Chosen, correct and
+  incorrect are distinguished by ring, fill, icon and label — a selection is never styled like a
+  correct answer. Tile focus is dashed so it can't be confused with the solid rings.
+- **Motion** (`frontend/src/lib/motion.js`): pointer tilt writes CSS variables in
+  `requestAnimationFrame` (no re-renders), only for fine pointers without reduced motion. Used by
+  pricing cards (≤3°) and the hero logo (`components/BrandMark.jsx`: CSS entrance, one masked light
+  sweep, then settled; the raster logo is animated whole, never redrawn).
+- **Header:** sticky and translucent (blur, opaque fallback) on site pages; static and minimal in games.
 - **Shape:** 12 px controls, 16–18 px cards and tiles, 8 px labels. Pills are avoided.
 - **Type:** Bricolage Grotesque (display) and Atkinson Hyperlegible (body), self-hosted.
 - Contrast for every text and control pair is enforced by `App.test.jsx`; axe checks run in

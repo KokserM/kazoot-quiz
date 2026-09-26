@@ -185,7 +185,8 @@ export function FinalScreen({ leaderboard, session, seat, isHost, config, onLeav
                   : 'Pick a topic, share a code, and play along. The first 3 quizzes each month are free.'}
               </Muted>
               <Row>
-                <LinkButton to="/create" onClick={() => track('end_cta_clicked', { kind: session.isDemo ? 'demo' : 'ai', role: isOwner ? 'host' : 'player' })}>
+                {/* The host's main action is "Start next game" above; keep one primary per screen. */}
+                <LinkButton to="/create" variant={isOwner && isHost ? 'secondary' : 'primary'} onClick={() => track('end_cta_clicked', { kind: session.isDemo ? 'demo' : 'ai', role: isOwner ? 'host' : 'player' })}>
                   Create your own quiz
                 </LinkButton>
                 <Button variant="ghost" onClick={onLeave}>

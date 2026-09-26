@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../auth/AuthProvider';
@@ -7,9 +7,37 @@ import { LEGAL, hasSellerIdentity } from '../lib/legal';
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '../lib/support';
 import { Button, Container, LinkButton } from './ui';
 
+// On site pages the header stays in view: translucent over content, opaque where
+// backdrop blur isn't supported. Below dialogs (top layer) and toasts (z 50).
+// Game screens get a plain, static bar so the question has the whole screen.
 const Header = styled.header`
   border-bottom: 1px solid var(--line);
   background: var(--paper);
+
+  &[data-sticky='true'] {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    border-bottom-color: color-mix(in srgb, var(--line) 80%, transparent);
+    transition: box-shadow 200ms ease, border-color 200ms ease;
+
+    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      background: color-mix(in srgb, var(--paper) 78%, transparent);
+      -webkit-backdrop-filter: saturate(1.6) blur(14px);
+      backdrop-filter: saturate(1.6) blur(14px);
+    }
+  }
+  &[data-scrolled='true'] {
+    border-bottom-color: var(--line);
+    box-shadow: 0 8px 24px -18px rgba(20, 14, 34, 0.45);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    &[data-sticky='true'] {
+      background: var(--paper);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
 `;
 
 const HeaderInner = styled(Container)`
@@ -17,7 +45,7 @@ const HeaderInner = styled(Container)`
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 64px;
+  min-height: var(--header-h);
 `;
 
 const Brand = styled(Link)`
@@ -30,14 +58,16 @@ const Brand = styled(Link)`
   font-weight: 700;
   font-size: 1.25rem;
   letter-spacing: -0.02em;
+  flex: 0 0 auto;
   &:hover { color: var(--ink); }
-  img { width: 34px; height: 34px; border-radius: 9px; }
+  img { width: 32px; height: 32px; border-radius: 9px; }
 `;
 
 const Nav = styled.nav`
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
 
   a.nav-link {
     padding: 8px 12px;
@@ -46,22 +76,50 @@ const Nav = styled.nav`
     text-decoration: none;
     font-weight: 700;
     font-size: 0.95rem;
+    white-space: nowrap;
     &:hover { color: var(--ink); background: var(--surface-sunk); }
-    &.active { color: var(--ink); }
+    &.active { color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); border-radius: 10px 10px 4px 4px; }
   }
 
   @media (max-width: 760px) {
     .hide-mobile { display: none; }
   }
+  @media (max-width: 400px) {
+    a.nav-link { padding: 8px; }
+  }
 `;
+
+// A 1px sentinel at the top of the page: when it scrolls away, the header gets its shadow.
+// One observer instead of a scroll listener, and no React re-render.
+function useScrolledFlag(headerRef, enabled) {
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!enabled || !header || !('IntersectionObserver' in window)) return undefined;
+    const sentinel = document.createElement('div');
+    sentinel.setAttribute('aria-hidden', 'true');
+    sentinel.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:1px;pointer-events:none;';
+    document.body.prepend(sentinel);
+    const observer = new IntersectionObserver(([entry]) => {
+      header.setAttribute('data-scrolled', entry.isIntersecting ? 'false' : 'true');
+    });
+    observer.observe(sentinel);
+    return () => {
+      observer.disconnect();
+      sentinel.remove();
+      header.removeAttribute('data-scrolled');
+    };
+  }, [headerRef, enabled]);
+}
 
 export function SiteHeader({ minimal = false }) {
   const { user, isAuthLoading, isConfigured, signIn } = useAuth();
+  const headerRef = useRef(null);
+  useScrolledFlag(headerRef, !minimal);
   return (
-    <Header>
+    <Header ref={headerRef} data-sticky={minimal ? 'false' : 'true'}>
       <HeaderInner>
         <Brand to="/" aria-label={`${BRAND.name} home`}>
-          <img src="/favicon-192.png" alt="" width="34" height="34" />
+          <img src="/favicon-192.png" alt="" width="32" height="32" />
           {BRAND.name}
         </Brand>
         {minimal ? null : (

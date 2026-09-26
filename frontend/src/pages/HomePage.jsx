@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import styled from 'styled-components';
+import { HeroMark } from '../components/BrandMark';
 import { AnswerGrid } from '../components/game/AnswerGrid';
 import { Countdown } from '../components/game/Countdown';
 import { Icon } from '../components/Icon';
@@ -10,7 +11,7 @@ import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '../lib/support';
 import { useCatalog, useConfig } from '../lib/useConfig';
 
 const Hero = styled.section`
-  padding: clamp(32px, 7vw, 88px) 0 clamp(32px, 6vw, 72px);
+  padding: clamp(28px, 6vw, 80px) 0 clamp(36px, 6vw, 80px);
 `;
 
 const HeroGrid = styled(Container)`
@@ -23,10 +24,28 @@ const HeroGrid = styled(Container)`
   }
 `;
 
+// Logo + category: the brand introduces the promise, then steps back.
+const Lockup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  p {
+    display: grid;
+    gap: 2px;
+  }
+  strong {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+`;
+
 const Headline = styled.h1`
-  font-size: clamp(2.4rem, 4.6vw, 3.9rem);
-  line-height: 1;
-  letter-spacing: -0.035em;
+  font-size: clamp(2.5rem, 5vw, 4.1rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.04em;
   .line {
     display: block;
     @media (min-width: 700px) {
@@ -34,9 +53,20 @@ const Headline = styled.h1`
     }
   }
 
+  /* The payoff line takes the logo's violet → magenta stroke. Both ends are readable on paper. */
   em {
     font-style: normal;
-    color: var(--accent-text);
+    color: var(--brand-a);
+    @supports (-webkit-background-clip: text) or (background-clip: text) {
+      background: linear-gradient(100deg, var(--brand-a) 10%, var(--brand-b) 90%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    @media (forced-colors: active) {
+      -webkit-text-fill-color: currentColor;
+      background: none;
+    }
   }
 `;
 
@@ -44,6 +74,31 @@ const Lead = styled.p`
   font-size: clamp(1.1rem, 2vw, 1.3rem);
   color: var(--ink-2);
   max-width: 34em;
+`;
+
+// On phones both actions span the column instead of wrapping to ragged widths.
+const Actions = styled(Row)`
+  @media (max-width: 480px) {
+    > * {
+      flex: 1 1 100%;
+    }
+  }
+`;
+
+const Reassure = styled.p`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  color: var(--ink-2);
+  font-size: 0.95rem;
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  svg {
+    color: var(--success);
+  }
 `;
 
 // The preview is a real piece of the game UI, rendered in the stage theme.
@@ -54,7 +109,7 @@ const Preview = styled.figure`
   background: var(--paper);
   color: var(--ink);
   border: 1px solid var(--line);
-  box-shadow: 0 30px 60px -30px rgba(11, 16, 32, 0.55);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 40px 70px -34px rgba(76, 29, 149, 0.6), 0 18px 30px -24px rgba(16, 10, 28, 0.6);
 
   figcaption {
     margin-top: 14px;
@@ -76,7 +131,7 @@ const PreviewTop = styled.div`
 const Band = styled.section`
   padding: clamp(40px, 7vw, 80px) 0;
   border-top: 1px solid var(--line);
-  background: ${({ $sunk }) => ($sunk ? 'var(--surface-sunk)' : 'transparent')};
+  background: ${({ $sunk }) => ($sunk ? 'var(--band)' : 'transparent')};
 `;
 
 const Steps = styled.ol`
@@ -101,10 +156,10 @@ const Steps = styled.ol`
     height: 44px;
     margin-bottom: 14px;
     border-radius: 12px;
-    background: var(--accent-soft);
-    color: var(--accent-text);
+    background: var(--accent);
+    color: var(--accent-ink);
     font-family: var(--font-display);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 1.2rem;
   }
   h3 {
@@ -132,32 +187,97 @@ const Plain = styled.ul`
   gap: 14px;
   li {
     padding-left: 18px;
-    border-left: 3px solid var(--line-strong);
+    border-left: 3px solid var(--accent);
   }
   strong {
     display: block;
   }
 `;
 
+// A divided list, not a stack of boxes: hairlines between questions, the whole row is the
+// target, and a +/× toggle on the right replaces the browser's disclosure triangle.
 const Faq = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  border-top: 1px solid var(--line);
+
   details {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 0 18px;
+    border-bottom: 1px solid var(--line);
   }
   summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 20px 0;
     cursor: pointer;
-    padding: 16px 0;
+    list-style: none;
+    font-family: var(--font-display);
+    font-size: clamp(1.05rem, 2vw, 1.2rem);
     font-weight: 700;
-    font-size: 1.05rem;
-    list-style-position: outside;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    transition: color 140ms ease;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary:hover {
+    color: var(--accent-text);
+  }
+  summary:focus-visible {
+    outline-offset: 4px;
+  }
+  .toggle {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    transition: background-color 160ms ease, color 160ms ease;
+    svg {
+      transition: transform 200ms var(--ease-out);
+    }
+  }
+  summary:hover .toggle {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  /* The plus turns into a close mark; the tile itself stays square. */
+  details[open] .toggle {
+    background: var(--accent);
+    color: var(--accent-ink);
+    svg {
+      transform: rotate(45deg);
+    }
   }
   details p {
-    padding: 0 0 16px;
+    max-width: 62ch;
+    padding: 0 52px 22px 0;
+    color: var(--ink-2);
+  }
+`;
+
+// Closing call to action on the game's own stage colours.
+const Finale = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: clamp(24px, 5vw, 48px);
+  border-radius: 24px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  h2 {
+    max-width: 17em;
+    font-size: clamp(1.5rem, 3.2vw, 2.2rem);
+    font-weight: 800;
+  }
+  p {
+    margin-top: 8px;
     color: var(--ink-2);
   }
 `;
@@ -192,6 +312,7 @@ export default function HomePage() {
   const { config } = useConfig();
   const { plans } = useCatalog();
   const pricingRef = useRef(null);
+  const heroRef = useRef(null);
 
   useEffect(() => track('landing_view', {}, { oncePerSession: true }), []);
   useEffect(() => {
@@ -209,10 +330,16 @@ export default function HomePage() {
 
   return (
     <main>
-      <Hero>
+      <Hero ref={heroRef}>
         <HeroGrid>
-          <Stack $gap={22}>
-            <Eyebrow>Live quiz game for groups</Eyebrow>
+          <Stack $gap={24}>
+            <Lockup>
+              <HeroMark areaRef={heroRef} />
+              <p>
+                <strong>Kazoot</strong>
+                <Eyebrow as="span">Live quiz game for groups</Eyebrow>
+              </p>
+            </Lockup>
             <Headline>
               <span className="line">Pick a topic.</span>{' '}
               <span className="line">Everyone plays —</span>{' '}
@@ -222,17 +349,23 @@ export default function HomePage() {
               Kazoot writes a 10-question quiz on the topic you choose. Friends join on their phones with a code — and because you haven’t seen the
               questions either, you get to play too.
             </Lead>
-            <Row $gap={12}>
+            <Actions $gap={12}>
               <LinkButton to="/demo" size="lg">
                 Try a free demo
+                <Icon name="arrowRight" />
               </LinkButton>
               <LinkButton to="/create" size="lg" variant="secondary">
                 Create a quiz
               </LinkButton>
-            </Row>
-            <Muted $small>
-              Demo: no account, no card. Your own topics: sign in with Google, {config?.freeAiGamesPerMonth ?? 3} free quizzes a month.
-            </Muted>
+            </Actions>
+            <Reassure>
+              <span>
+                <Icon name="check" /> Demo: no account, no card
+              </span>
+              <span>
+                <Icon name="check" /> Your own topics: {config?.freeAiGamesPerMonth ?? 3} free quizzes a month
+              </span>
+            </Reassure>
           </Stack>
 
           <Preview aria-label="Preview of the question screen" data-stage-scope="">
@@ -335,7 +468,12 @@ export default function HomePage() {
             <Faq>
               {FAQ.map(([question, answer]) => (
                 <details key={question}>
-                  <summary>{question}</summary>
+                  <summary>
+                    {question}
+                    <span className="toggle" aria-hidden="true">
+                      <Icon name="plus" />
+                    </span>
+                  </summary>
                   <p>{answer}</p>
                 </details>
               ))}
@@ -349,17 +487,21 @@ export default function HomePage() {
 
       <Band>
         <Container>
-          <Row $justify="space-between" $gap={20}>
-            <SectionTitle style={{ maxWidth: '18em' }}>See how it feels — the demo takes two minutes.</SectionTitle>
+          <Finale data-stage-scope="">
+            <div>
+              <SectionTitle>See how it feels — the demo takes two minutes.</SectionTitle>
+              <p>No account, no card. Play solo or with whoever is in the room.</p>
+            </div>
             <Row>
               <LinkButton to="/demo" size="lg">
                 Try a free demo
+                <Icon name="arrowRight" />
               </LinkButton>
               <LinkButton to="/join" size="lg" variant="secondary">
                 Join a game
               </LinkButton>
             </Row>
-          </Row>
+          </Finale>
         </Container>
       </Band>
     </main>

@@ -64,7 +64,7 @@ const buttonBase = css`
   line-height: 1.1;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 160ms ease, color 140ms ease, transform 120ms var(--ease-out);
   width: ${({ $block }) => ($block ? '100%' : 'auto')};
   white-space: nowrap;
 
@@ -74,17 +74,30 @@ const buttonBase = css`
 
   ${({ $variant = 'primary' }) =>
     ({
+      // The one gradient in the UI: the logo's violet → magenta stroke, reserved for the main action.
       primary: css`
-        background: var(--accent);
+        background: var(--accent) var(--brand-gradient);
         color: var(--accent-ink);
-        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 8px 18px -10px rgba(37, 99, 235, 0.9);
-        &:hover:not(:disabled) { background: var(--accent-hover); color: var(--accent-ink); transform: translateY(-1px); }
+        box-shadow: var(--shadow-action);
+        &:hover:not(:disabled) {
+          background: var(--accent-hover) var(--brand-gradient-hover);
+          color: var(--accent-ink);
+          transform: translateY(-1px);
+          box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset, 0 14px 26px -12px rgba(124, 58, 237, 0.95);
+        }
       `,
       secondary: css`
         background: var(--surface);
         color: var(--ink);
         border-color: var(--line-strong);
-        &:hover:not(:disabled) { border-color: var(--accent-text); color: var(--ink); background: var(--accent-soft); }
+        &:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
+      `,
+      // Clearly a button, quieter than primary: for repeated actions such as one per pricing card.
+      tonal: css`
+        background: var(--accent-soft);
+        color: var(--accent-text);
+        border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+        &:hover:not(:disabled) { background: var(--accent) var(--brand-gradient); color: var(--accent-ink); border-color: transparent; }
       `,
       ghost: css`
         background: transparent;
@@ -304,7 +317,7 @@ export const Badge = styled.span`
     $tone &&
     css`
       background: var(--${$tone}-soft);
-      color: var(--${$tone});
+      color: var(--${$tone === 'accent' ? 'accent-text' : $tone});
     `}
 `;
 

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../auth/AuthProvider';
-import { PlanButton, PlanGrid, PricingExplainer } from '../components/Pricing';
+import { PlanButton, PlanGrid, PricingExplainer, describePlan } from '../components/Pricing';
 import { Badge, Button, Card, Container, Divider, ErrorNotice, Eyebrow, LinkButton, Muted, Notice, PageMain, PageTitle, Row, SectionTitle, Spinner, Stack } from '../components/ui';
 import { track } from '../lib/analytics';
 import { createCheckoutSession, createPortalSession, deleteAccount } from '../lib/api';
@@ -54,6 +54,29 @@ const GrantTable = styled.table`
 `;
 
 const GRANT_LABELS = { pack: 'Pack', subscription: 'Subscription', manual: 'Added by support' };
+
+// A plan chosen on a public pricing card (/account?buy=<id>). Kept in sessionStorage
+// because the Google sign-in round trip returns to /account without the query string.
+const BUY_INTENT_KEY = 'kazoot:buy-intent';
+
+function readBuyIntent() {
+  try {
+    return sessionStorage.getItem(BUY_INTENT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeBuyIntent(planId) {
+  try {
+    if (planId) sessionStorage.setItem(BUY_INTENT_KEY, planId);
+    else sessionStorage.removeItem(BUY_INTENT_KEY);
+  } catch {
+    // Storage unavailable: the plan is still on the URL for this visit.
+  }
+}
+
+const ACTIVE_SUBSCRIPTION_STATES = ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'];
 
 function ConsentDialog({ plan, onCancel, onConfirm, busy }) {
   const [agreed, setAgreed] = useState(false);
@@ -108,6 +131,33 @@ export default function AccountPage() {
   const [error, setError] = useState('');
   const [deleteStep, setDeleteStep] = useState(0);
   const checkoutState = params.get('checkout');
+  const buyParam = params.get('buy');
+  const [intendedPlanId] = useState(() => buyParam || readBuyIntent());
+  const intendedPlan = plans?.find((plan) => plan.id === intendedPlanId && plan.configured) || null;
+
+  useEffect(() => {
+    if (buyParam) writeBuyIntent(buyParam);
+  }, [buyParam]);
+
+  // Signed in with a plan chosen on the pricing page: open the same consent step as the
+  // buttons below. Checkout itself still only starts from that dialog.
+  const handledIntent = useRef(false);
+  useEffect(() => {
+    if (handledIntent.current || !user || !plans || !usage || !intendedPlanId) return;
+    handledIntent.current = true;
+    writeBuyIntent(null);
+    if (buyParam) {
+      const next = new URLSearchParams(params);
+      next.delete('buy');
+      setParams(next, { replace: true });
+    }
+    if (!intendedPlan) return;
+    if (intendedPlan.mode === 'subscription' && ACTIVE_SUBSCRIPTION_STATES.includes(usage.subscription?.status)) {
+      setError('You already have a subscription. You can change or cancel it in “Manage billing”.');
+      return;
+    }
+    setPendingPlan(intendedPlan);
+  }, [user, plans, usage, intendedPlanId, intendedPlan, buyParam, params, setParams]);
 
   // After Stripe redirects back, credits arrive via webhook: poll briefly.
   useEffect(() => {
@@ -178,8 +228,12 @@ export default function AccountPage() {
       <PageMain>
         <Container $narrow>
           <Stack $gap={16}>
-            <PageTitle>Your account</PageTitle>
-            <Muted>Sign in to see your AI games and purchases. Players never need an account.</Muted>
+            <PageTitle>{intendedPlan ? `Sign in to buy ${intendedPlan.name}` : 'Your account'}</PageTitle>
+            <Muted>
+              {intendedPlan
+                ? `${describePlan(intendedPlan).price} for ${describePlan(intendedPlan).headline}. Sign in with Google, then confirm the details and pay securely with Stripe.`
+                : 'Sign in to see your AI games and purchases. Players never need an account.'}
+            </Muted>
             <ErrorNotice error={authError} />
             <Row>
               <Button onClick={signIn} disabled={!isConfigured}>
@@ -196,7 +250,7 @@ export default function AccountPage() {
   }
 
   const subscription = describeSubscription(usage?.subscription);
-  const hasActiveSubscription = ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(usage?.subscription?.status);
+  const hasActiveSubscription = ACTIVE_SUBSCRIPTION_STATES.includes(usage?.subscription?.status);
 
   return (
     <PageMain>
