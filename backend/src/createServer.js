@@ -1,6 +1,6 @@
 const http = require('http');
 const { Server } = require('socket.io');
-const { config, isOriginAllowed } = require('./config');
+const { config: baseConfig, isOriginAllowed } = require('./config');
 const { SessionStore } = require('./game/sessionStore');
 const { GameService } = require('./game/gameService');
 const { QuestionService } = require('./quiz/questionService');
@@ -9,123 +9,129 @@ const { registerSocketHandlers } = require('./socket/registerSocketHandlers');
 const { SupabaseAuthService } = require('./auth/supabaseAuth');
 const { AiUsageService } = require('./billing/aiUsageService');
 const { StripeBillingService } = require('./billing/stripeBillingService');
+const { createLogger } = require('./observability/logger');
+const { Metrics } = require('./observability/metrics');
 
-function logRuntimeMessage(level, message, details = {}) {
-  const serializedDetails = Object.keys(details).length ? ` ${JSON.stringify(details)}` : '';
-  console[level](`[runtime] ${message}${serializedDetails}`);
-}
+// overrides.config: partial config merged over the environment config (tests).
+// overrides.<service>: replacement service instances (tests).
+function createServer(overrides = {}) {
+  const config = { ...baseConfig, ...(overrides.config || {}) };
+  const logger = overrides.logger || createLogger({ silent: config.nodeEnv === 'test' });
 
-function createServer() {
   const store = new SessionStore({
     sessionRetentionMs: config.sessionRetentionMs,
     endedSessionRetentionMs: config.endedSessionRetentionMs,
     storeMode: config.storeMode,
-    logger(eventName, details) {
-      if (config.nodeEnv !== 'production') {
-        return;
-      }
+    logger: (event, details) => logger.info(`store_${event}`, details),
+  });
+  const questionService =
+    overrides.questionService || new QuestionService({ apiKey: config.openAiApiKey, model: config.openAiModel, config });
+  const authService = overrides.authService || new SupabaseAuthService({ config });
+  const aiUsageService = overrides.aiUsageService || new AiUsageService({ config });
+  const billingService =
+    overrides.billingService ||
+    new StripeBillingService({ config, aiUsageService, client: overrides.stripeClient, logger });
+  const metrics = new Metrics({
+    logger,
+    sink: (name, props) => aiUsageService.recordProductEvent(name, props),
+    flushIntervalMs: config.nodeEnv === 'test' ? 0 : 5 * 60_000,
+  });
 
-      console.log(
-        `[store:${eventName}] ${JSON.stringify({
-          timestamp: new Date().toISOString(),
-          ...details,
-        })}`
-      );
+  const pruneCallbacks = [];
+  const server = http.createServer();
+  const io = new Server(server, {
+    cors: {
+      origin: (origin, callback) => callback(null, isOriginAllowed(origin)),
+      credentials: true,
+      methods: ['GET', 'POST'],
     },
+    // Reconnecting clients always re-join with their seat token and receive a full
+    // snapshot, so Socket.IO's packet-replay recovery is not needed.
+    pingInterval: config.socketPingIntervalMs,
+    pingTimeout: config.socketPingTimeoutMs,
+    maxHttpBufferSize: 16 * 1024,
   });
 
-  const questionService = new QuestionService({
-    apiKey: config.openAiApiKey,
-    model: config.openAiModel,
-    config,
-  });
-  const authService = new SupabaseAuthService({ config });
-  const aiUsageService = new AiUsageService({ config });
-  const billingService = new StripeBillingService({ config, aiUsageService });
+  const gameService = new GameService({ io, store, questionService, aiUsageService, config, logger, metrics });
+  registerSocketHandlers(io, gameService);
 
-  const placeholderGameService = {};
   const app = createApp({
-    gameService: placeholderGameService,
+    gameService,
     store,
     questionService,
     authService,
     aiUsageService,
     billingService,
     config,
+    logger,
+    metrics,
+    lifecycle: { onPrune: (callback) => pruneCallbacks.push(callback) },
   });
+  // Socket.IO handles its own path first; everything else goes to Express.
+  server.on('request', app);
 
-  const server = http.createServer(app);
-  const io = new Server(server, {
-    cors: {
-      origin(origin, callback) {
-        if (isOriginAllowed(origin)) {
-          callback(null, true);
-          return;
-        }
+  const maintenance = setInterval(() => {
+    store.reapExpiredSessions();
+    gameService.pruneRateLimiters();
+    pruneCallbacks.forEach((callback) => callback());
+  }, 60_000);
+  maintenance.unref();
 
-        callback(null, false);
-      },
-      credentials: true,
-      methods: ['GET', 'POST'],
-    },
-    connectionStateRecovery: {
-      maxDisconnectionDuration: 2 * 60 * 1000,
-      skipMiddlewares: true,
-    },
-    pingInterval: config.socketPingIntervalMs,
-    pingTimeout: config.socketPingTimeoutMs,
-    maxHttpBufferSize: config.socketMaxHttpBufferSize,
-  });
+  // Crash recovery for credits: settle reservations whose process died mid-generation.
+  const sweeper = setInterval(() => {
+    aiUsageService
+      .releaseStaleReservations()
+      .then((count) => count && logger.warn('stale_reservations_released', { count }))
+      .catch((error) => logger.error('stale_reservation_sweep_failed', { message: error.message }));
+  }, 5 * 60_000);
+  sweeper.unref();
 
-  const gameService = new GameService({
-    io,
-    store,
-    questionService,
-    aiUsageService,
-    config,
-  });
-
-  placeholderGameService.createSession = gameService.createSession.bind(gameService);
-  placeholderGameService.createSuccessorSession = gameService.createSuccessorSession.bind(gameService);
-  placeholderGameService.generateQuiz = gameService.generateQuiz.bind(gameService);
-  registerSocketHandlers(io, gameService);
-
-  if (config.nodeEnv === 'production') {
-    logRuntimeMessage('log', 'Store mode enabled', {
-      storeMode: config.storeMode,
-      deploymentId: config.railway.deploymentId || null,
-      serviceName: config.railway.serviceName || null,
-      replicaId: config.railway.replicaId || null,
-      replicaRegion: config.railway.replicaRegion || null,
-    });
-    logRuntimeMessage('warn', 'Single-instance memory mode requires exactly one Railway replica', {
-      action: 'keep this service scaled to one replica',
-      consequence: 'active sessions do not survive restarts or multi-replica routing',
-    });
-    if (!config.frontendUrl || config.allowedOrigins.size === 0) {
-      logRuntimeMessage('warn', 'Production origin allow-list is incomplete', {
-        action: 'set FRONTEND_URL and CORS_ALLOWED_ORIGINS to your Railway/custom-domain origins',
-      });
-    }
+  if (config.nodeEnv !== 'test') {
+    metrics.start();
   }
 
-  const reapInterval = setInterval(() => {
-    store.reapExpiredSessions();
-  }, 60_000);
-  if (typeof reapInterval.unref === 'function') {
-    reapInterval.unref();
+  let shuttingDown = null;
+  // Tell clients, stop accepting work, then close. Railway sends SIGTERM and waits
+  // RAILWAY_DEPLOYMENT_DRAINING_SECONDS before SIGKILL (default 0, so set it).
+  function shutdown(reason = 'signal') {
+    if (shuttingDown) return shuttingDown;
+    logger.warn('shutdown_started', { reason, activeSessions: store.sessions.size });
+    gameService.notifyShutdown();
+    shuttingDown = (async () => {
+      clearInterval(maintenance);
+      clearInterval(sweeper);
+      metrics.stop();
+      await metrics.flush();
+      // Give the restart notice a moment to reach clients.
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1500, config.shutdownGraceMs)));
+      store.sessions.forEach((session) => session.clearAllTimers());
+      await new Promise((resolve) => {
+        const force = setTimeout(resolve, config.shutdownGraceMs);
+        force.unref();
+        io.close(() => {
+          clearTimeout(force);
+          resolve();
+        });
+      });
+      logger.warn('shutdown_complete', {});
+    })();
+    return shuttingDown;
   }
 
   return {
     app,
     server,
     io,
+    config,
     store,
     questionService,
     authService,
     aiUsageService,
     billingService,
     gameService,
+    metrics,
+    logger,
+    shutdown,
   };
 }
 

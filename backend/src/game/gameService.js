@@ -1,330 +1,305 @@
-const { ZodError } = require('zod');
 const {
+  advanceSchema,
   createNextSessionSchema,
   createSessionSchema,
-  generateQuizSchema,
   joinGameSchema,
   quizSchema,
+  reviewUpdateSchema,
   submitAnswerSchema,
 } = require('../validation/schemas');
 const { FixedWindowRateLimiter } = require('../security/rateLimiter');
+const { UserFacingError, toClientError } = require('../errors');
 
-function buildAnswerStats(players, questionIndex) {
-  const stats = [0, 0, 0, 0];
+// Protocol (server -> client):
+//   joined-game       to the joining socket: summary + your seat credentials
+//   session-updated   room-wide summary (no answers, no tokens)
+//   question-start    room-wide question (never includes the correct answer)
+//   answer-progress   room-wide count of answers in this round
+//   question-results  room-wide reveal: correct answer, stats, leaderboard
+//   round-result      to one player: their pick and points for the round
+//   game-end          room-wide final leaderboard
+//   state-snapshot    to one socket: everything needed to redraw after reconnect
+//   next-game-ready   to one player: seat in the successor room
+//   server-restarting room-wide notice before a deploy/restart
+// Client actions carry an acknowledgement callback: { ok: true, ... } or
+// { ok: false, code, message }. Nothing is reported as accepted unless the server
+// accepted it.
 
-  for (const player of players) {
-    const answer = player.answers[questionIndex];
-    if (answer) {
-      stats[answer.answerIndex] += 1;
-    }
-  }
-
-  return stats;
+function points(timeRemainingMs, timeLimitMs) {
+  // 500-1000 points for a correct answer, more for answering sooner.
+  const ratio = Math.max(0, Math.min(1, timeRemainingMs / timeLimitMs));
+  return Math.round(500 + 500 * ratio);
 }
 
-function haveAllConnectedPlayersAnswered(session) {
-  const connectedPlayers = session.getConnectedPlayers();
-  if (connectedPlayers.length === 0) {
-    return false;
+// Only the entry appended by our own proxy is trustworthy; earlier entries are
+// whatever the client sent. With TRUST_PROXY=1 (Railway) that is the last entry.
+function getSocketClientIp(socket, trustProxy) {
+  const hops = Number(trustProxy);
+  const forwarded = String(socket.handshake.headers['x-forwarded-for'] || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (Number.isInteger(hops) && hops > 0 && forwarded.length >= hops) {
+    return forwarded[forwarded.length - hops];
   }
-
-  return connectedPlayers.every((player) => Boolean(player.answers[session.currentQuestionIndex]));
-}
-
-function formatValidationError(error) {
-  if (error instanceof ZodError) {
-    return error.issues.map((issue) => issue.message).join(', ');
-  }
-
-  return error.message || 'Invalid request';
-}
-
-function getSocketClientIp(socket) {
-  return socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || socket.handshake.address || 'unknown';
+  return socket.handshake.address || 'unknown';
 }
 
 class GameService {
-  constructor({ io, store, questionService, aiUsageService, config }) {
+  constructor({ io, store, questionService, aiUsageService, config, logger, metrics }) {
     this.io = io;
     this.store = store;
     this.questionService = questionService;
     this.aiUsageService = aiUsageService;
     this.config = config;
-    this.joinRateLimiter = new FixedWindowRateLimiter({
-      limit: config.joinRateLimitPerMin,
-      windowMs: 60_000,
-    });
-    this.failedJoinRateLimiter = new FixedWindowRateLimiter({
-      limit: config.failedJoinRateLimitPer15Min,
-      windowMs: 15 * 60_000,
-    });
-    this.socketEventRateLimiter = new FixedWindowRateLimiter({
-      limit: config.socketEventRateLimitPer10Sec,
-      windowMs: 10_000,
-    });
+    this.logger = logger || { info() {}, warn() {}, error() {} };
+    this.metrics = metrics || { track() {}, count() {} };
+    this.joinRateLimiter = new FixedWindowRateLimiter({ limit: config.joinRateLimitPerMin, windowMs: 60_000 });
+    this.failedJoinRateLimiter = new FixedWindowRateLimiter({ limit: config.failedJoinRateLimitPer15Min, windowMs: 15 * 60_000 });
+    this.socketEventRateLimiter = new FixedWindowRateLimiter({ limit: config.socketEventRateLimitPer10Sec, windowMs: 10_000 });
+    this.isShuttingDown = false;
   }
 
-  log(eventName, details = {}) {
-    if (this.config.nodeEnv !== 'production') {
-      return;
+  pruneRateLimiters() {
+    this.joinRateLimiter.prune();
+    this.failedJoinRateLimiter.prune();
+    this.socketEventRateLimiter.prune();
+  }
+
+  // ----------------------------------------------------------- quiz creation
+
+  assertCapacity() {
+    if (this.isShuttingDown) {
+      throw new UserFacingError('Kazoot is restarting for an update. Please try again in a minute.', { status: 503, code: 'restarting' });
+    }
+    if (this.store.sessions.size >= this.config.maxActiveSessions) {
+      throw new UserFacingError('Kazoot is very busy right now. Please try again in a few minutes.', { status: 503, code: 'at_capacity' });
+    }
+  }
+
+  async buildQuiz({ topic, demoId, language, difficulty }, context) {
+    if (demoId) {
+      return this.questionService.getDemoQuiz(demoId);
     }
 
-    console.log(
-      `[game:${eventName}] ${JSON.stringify({
-        timestamp: new Date().toISOString(),
-        ...details,
-      })}`
-    );
-  }
+    if (!context.user) {
+      throw new UserFacingError('Sign in to create a quiz on your own topic. The demo quizzes are free without an account.', {
+        status: 401,
+        code: 'auth_required',
+      });
+    }
+    if (!this.questionService.hasOpenAI()) {
+      throw new UserFacingError('Creating new quizzes is unavailable right now. The demo quizzes still work.', {
+        status: 503,
+        code: 'provider_unavailable',
+      });
+    }
 
-  async generateQuizForContext({ topic, language }, context = {}) {
-    let reservation = null;
-    let quiz = null;
-    const shouldUseOpenAI = this.questionService.hasOpenAI() && context.user;
+    const reservation = await this.aiUsageService.reserveQuizGeneration({
+      user: context.user,
+      topic,
+      language,
+      model: this.config.openAiModel,
+      ipAddress: context.ipAddress,
+    });
 
+    let quiz;
     try {
-      if (this.questionService.hasOpenAI() && !context.user) {
-        quiz = this.questionService.generateDemoQuiz(topic, language);
-      } else {
-        if (shouldUseOpenAI && this.aiUsageService) {
-          reservation = await this.aiUsageService.reserveQuizGeneration({
-            user: context.user,
-            topic,
-            language,
-            model: this.config.openAiModel,
-            ipAddress: context.ipAddress,
-          });
-        }
-
-        quiz = await this.questionService.generateQuiz(topic, language);
-      }
+      quiz = await this.questionService.generateQuiz({ topic, language, difficulty });
     } catch (error) {
-      if (reservation && this.aiUsageService) {
-        await this.aiUsageService.refundQuizGeneration(reservation, error);
-      }
+      await this.aiUsageService.releaseQuizGeneration(reservation, error, { usage: error.usage || {} }).catch((releaseError) => {
+        this.logger.error('credit_release_failed', { generationId: reservation.generationId, message: releaseError.message });
+      });
+      this.logger.warn('generation_failed', { generationId: reservation.generationId, code: error.code, message: error.message });
+      this.metrics.track('generation_failed', { code: error.code || 'unknown' });
       throw error;
     }
 
-    if (reservation && this.aiUsageService) {
-      if (quiz.source === 'openai') {
-        await this.aiUsageService.completeQuizGeneration(reservation, {
-          quiz,
-          usage: quiz.usage,
-        });
-      } else {
-        await this.aiUsageService.refundQuizGeneration(
-          reservation,
-          new Error('OpenAI generation fell back to demo questions')
-        );
-      }
+    const completed = await this.aiUsageService.completeQuizGeneration(reservation, { usage: quiz.usage });
+    if (!completed) {
+      // The reservation was released meanwhile (e.g. the stale-reservation sweeper).
+      throw new UserFacingError('That took too long and was cancelled. You were not charged. Please try again.', {
+        status: 504,
+        code: 'reservation_expired',
+      });
     }
-
+    this.logger.info('generation_succeeded', {
+      generationId: reservation.generationId,
+      mode: reservation.mode,
+      attempts: quiz.usage?.attempts,
+      inputTokens: quiz.usage?.inputTokens,
+      outputTokens: quiz.usage?.outputTokens,
+    });
     return quiz;
   }
 
-  async createSession(payload, context = {}) {
-    const { topic, language, questionTimeLimitMs, revealTiming } = createSessionSchema.parse(payload);
-    const activeSessions = this.store.getHealthSnapshot().activeSessions;
-    if (activeSessions >= this.config.maxActiveSessions) {
-      throw new Error('The server is at the active room limit. Try again in a few minutes.');
-    }
-
-    const quiz = await this.generateQuizForContext({ topic, language }, context);
-    const validatedQuiz = quizSchema.parse(quiz);
-
-    const session = this.store.createSession({
-      topic: validatedQuiz.topic,
-      language: validatedQuiz.language,
-      questions: validatedQuiz.questions,
-      questionSource: quiz.source || 'demo',
-      questionTimeLimitMs,
-      revealTiming,
+  createRoom(quiz, options) {
+    const validated = quizSchema.parse({ topic: quiz.topic, language: quiz.language, questions: quiz.questions });
+    const isDemo = quiz.source === 'demo';
+    return this.store.createSession({
+      topic: validated.topic,
+      language: validated.language,
+      questions: validated.questions,
+      questionSource: quiz.source,
+      questionTimeLimitMs: options.questionTimeLimitMs,
+      revealTiming: options.revealTiming,
+      reviewMode: options.reviewMode,
+      isDemo,
+      demoId: quiz.demoId || null,
+      maxPlayers: isDemo ? Math.min(this.config.maxDemoPlayers, this.config.maxPlayersPerSession) : this.config.maxPlayersPerSession,
+      hostGraceMs: this.config.hostGraceMs,
     });
+  }
+
+  async createSession(payload, context = {}) {
+    const options = createSessionSchema.parse(payload);
+    this.assertCapacity();
+    const quiz = await this.buildQuiz(options, context);
+    const session = this.createRoom(quiz, options);
+    this.metrics.track('game_created', { kind: session.isDemo ? 'demo' : 'ai', demoId: session.demoId || undefined, language: session.language });
 
     return {
-      sessionId: session.id,
-      topic: session.topic,
-      language: session.language,
-      questionCount: session.questions.length,
-      questionTimeLimitMs: session.questionTimeLimitMs,
-      revealTiming: session.revealTiming,
-      questionSource: session.questionSource,
+      ...session.toSummary(),
       hostToken: session.hostOwnerToken,
     };
   }
 
-  buildJoinedPayload(session, player, extras = {}) {
-    return {
-      ...session.toSessionSummary(player.playerId),
-      isAdmin: player.isHost,
-      playerId: player.playerId,
-      playerToken: player.playerToken,
-      hostToken: player.hostAuthority === 'owner' ? player.hostToken : null,
-      ...extras,
-    };
-  }
-
   async createSuccessorSession(payload, context = {}) {
-    const {
-      sourceSessionId,
-      hostToken,
-      topic,
-      language,
-      questionTimeLimitMs,
-      revealTiming,
-    } = createNextSessionSchema.parse(payload);
+    const { sourceSessionId, hostToken, ...options } = createNextSessionSchema.parse(payload);
     const sourceSession = this.store.getSession(sourceSessionId);
-
     if (!sourceSession) {
-      throw new Error('Game session not found');
+      throw new UserFacingError('This game has expired. Start a new one from the home page.', { status: 404, code: 'not_found' });
     }
-
-    if (sourceSession.gameState !== 'ended') {
-      throw new Error('Create the next game after the final standings are shown.');
-    }
-
     if (!sourceSession.isValidHostToken(hostToken)) {
-      throw new Error('Only the original host can create the next game for this group.');
+      throw new UserFacingError('Only the person who created this game can start the next one.', { status: 403, code: 'not_host' });
+    }
+    if (sourceSession.gameState !== 'ended') {
+      throw new UserFacingError('Finish this game before starting the next one.', { status: 409, code: 'not_ended' });
     }
 
-    if (sourceSession.successorSessionId) {
-      const existingSuccessor = this.store.getSession(sourceSession.successorSessionId);
-      if (existingSuccessor) {
-        this.emitSuccessorReady(sourceSession, existingSuccessor);
-        return {
-          ...existingSuccessor.toSessionSummary(),
-          sessionId: existingSuccessor.id,
-          hostToken: existingSuccessor.hostOwnerToken,
-          previousSessionId: sourceSession.id,
-          transferredPlayerCount: existingSuccessor.players.size,
-          reused: true,
-        };
-      }
-
-      sourceSession.successorSessionId = null;
-      sourceSession.successorPlayerTokenMap.clear();
-    }
-
-    const activeSessions = this.store.getHealthSnapshot().activeSessions;
-    if (activeSessions >= this.config.maxActiveSessions) {
-      throw new Error('The server is at the active room limit. Try again in a few minutes.');
+    const existing = sourceSession.successorSessionId ? this.store.getSession(sourceSession.successorSessionId) : null;
+    if (existing) {
+      this.emitSuccessorReady(sourceSession, existing);
+      return { ...existing.toSummary(), hostToken: existing.hostOwnerToken, previousSessionId: sourceSession.id, reused: true };
     }
 
     const transferablePlayers = sourceSession.getConnectedPlayers();
     if (transferablePlayers.length === 0) {
-      throw new Error('No connected players are available to move into the next game.');
+      throw new UserFacingError('Nobody is connected to this game any more.', { status: 409, code: 'empty' });
     }
 
-    const quiz = await this.generateQuizForContext({ topic, language }, context);
-    const validatedQuiz = quizSchema.parse(quiz);
-    const successorSession = this.store.createSession({
-      topic: validatedQuiz.topic,
-      language: validatedQuiz.language,
-      questions: validatedQuiz.questions,
-      questionSource: quiz.source || 'demo',
-      questionTimeLimitMs,
-      revealTiming,
-    });
+    this.assertCapacity();
+    const quiz = await this.buildQuiz(options, context);
 
-    sourceSession.successorSessionId = successorSession.id;
-    sourceSession.successorPlayerTokenMap.clear();
+    // Re-check after the (slow) generation: a double-click may have created it already.
+    const raced = sourceSession.successorSessionId ? this.store.getSession(sourceSession.successorSessionId) : null;
+    if (raced) {
+      return { ...raced.toSummary(), hostToken: raced.hostOwnerToken, previousSessionId: sourceSession.id, reused: true };
+    }
 
-    transferablePlayers.forEach((sourcePlayer) => {
-      const socketId = sourcePlayer.socketId;
-      const isOwnerHost = sourcePlayer.playerId === sourceSession.hostOwnerPlayerId;
-      const successorPlayer = successorSession.addPlayer({
+    const successor = this.createRoom(quiz, options);
+    sourceSession.successorSessionId = successor.id;
+
+    sourceSession.getConnectedPlayers().forEach((sourcePlayer) => {
+      const isOwner = sourcePlayer.playerId === sourceSession.hostOwnerPlayerId;
+      const nextPlayer = successor.addPlayer({
         username: sourcePlayer.username,
-        socketId,
-        hostToken: isOwnerHost ? successorSession.hostOwnerToken : null,
+        socketId: sourcePlayer.socketId,
+        hostToken: isOwner ? successor.hostOwnerToken : null,
       });
-
       sourceSession.successorPlayerTokenMap.set(sourcePlayer.playerToken, {
-        sessionId: successorSession.id,
-        playerToken: successorPlayer.playerToken,
-        playerId: successorPlayer.playerId,
-        hostToken: successorPlayer.hostAuthority === 'owner' ? successorPlayer.hostToken : null,
+        sessionId: successor.id,
+        playerId: nextPlayer.playerId,
       });
-
-      if (socketId) {
-        const socket = this.io.sockets.sockets.get(socketId);
-        socket?.leave(sourceSession.id);
-        socket?.join(successorSession.id);
-        if (socket) {
-          socket.data.sessionId = successorSession.id;
-          socket.data.playerId = successorPlayer.playerId;
-          socket.data.playerToken = successorPlayer.playerToken;
-          socket.data.hostToken = successorPlayer.hostToken || null;
-        }
-        this.store.bindSocket({
-          sessionId: successorSession.id,
-          playerId: successorPlayer.playerId,
-          socketId,
-        });
+      const socket = sourcePlayer.socketId ? this.io.sockets.sockets.get(sourcePlayer.socketId) : null;
+      if (socket) {
+        this.moveSocket(socket, sourceSession, successor, nextPlayer);
+      } else {
+        nextPlayer.connected = false;
+        nextPlayer.socketId = null;
       }
-
-      sourceSession.markTransferred(sourcePlayer.playerId);
+      sourcePlayer.connected = false;
+      sourcePlayer.socketId = null;
     });
 
-    sourceSession.refreshHostAuthority({ preserveTemporaryHost: false });
     sourceSession.touch();
-    this.emitSuccessorReady(sourceSession, successorSession);
-    this.emitSessionUpdate(successorSession);
+    this.emitSuccessorReady(sourceSession, successor);
+    this.broadcastSummary(successor);
+    this.metrics.track('game_created', { kind: successor.isDemo ? 'demo' : 'ai', mode: 'successor', players: successor.players.size });
 
-    this.log('successor_session_created', {
-      sourceSessionId: sourceSession.id,
-      successorSessionId: successorSession.id,
-      transferredPlayerCount: successorSession.players.size,
+    return { ...successor.toSummary(), hostToken: successor.hostOwnerToken, previousSessionId: sourceSession.id, reused: false };
+  }
+
+  moveSocket(socket, fromSession, toSession, player) {
+    socket.leave(fromSession.id);
+    socket.join(toSession.id);
+    socket.data.sessionId = toSession.id;
+    socket.data.playerId = player.playerId;
+    this.store.bindSocket({ sessionId: toSession.id, playerId: player.playerId, socketId: socket.id });
+  }
+
+  emitSuccessorReady(sourceSession, successor) {
+    successor.players.forEach((player) => {
+      this.emitToPlayer(player, 'next-game-ready', this.buildJoinedPayload(successor, player, { previousSessionId: sourceSession.id }));
     });
+  }
 
+  // ------------------------------------------------------------- teacher mode
+
+  getReviewSession(sessionId, hostToken) {
+    const session = this.store.getSession(sessionId);
+    if (!session) {
+      throw new UserFacingError('This game has expired.', { status: 404, code: 'not_found' });
+    }
+    if (!session.isValidHostToken(hostToken)) {
+      throw new UserFacingError('Only the person who created this game can review it.', { status: 403, code: 'not_host' });
+    }
+    if (!session.reviewMode) {
+      throw new UserFacingError('This game was created as a surprise quiz, so its questions stay hidden until play.', {
+        status: 403,
+        code: 'surprise_mode',
+      });
+    }
+    return session;
+  }
+
+  getQuestionsForReview(sessionId, hostToken) {
+    const session = this.getReviewSession(sessionId, hostToken);
+    session.hostReviewed = true;
+    this.broadcastSummary(session);
+    return { sessionId: session.id, gameState: session.gameState, questions: session.questions };
+  }
+
+  updateQuestionsForReview(sessionId, hostToken, payload) {
+    const session = this.getReviewSession(sessionId, hostToken);
+    if (session.gameState !== 'waiting') {
+      throw new UserFacingError('Questions can only be edited before the game starts.', { status: 409, code: 'already_started' });
+    }
+    const { questions } = reviewUpdateSchema.parse(payload);
+    session.questions = questions;
+    session.hostReviewed = true;
+    session.touch();
+    this.broadcastSummary(session);
+    return { sessionId: session.id, questions: session.questions };
+  }
+
+  // ---------------------------------------------------------------- payloads
+
+  buildJoinedPayload(session, player, extras = {}) {
     return {
-      ...successorSession.toSessionSummary(),
-      sessionId: successorSession.id,
-      hostToken: successorSession.hostOwnerToken,
-      previousSessionId: sourceSession.id,
-      transferredPlayerCount: successorSession.players.size,
-      reused: false,
+      session: session.toSummary(),
+      playerId: player.playerId,
+      playerToken: player.playerToken,
+      hostToken: player.playerId === session.hostOwnerPlayerId ? session.hostOwnerToken : null,
+      ...extras,
     };
   }
 
-  emitSuccessorReady(sourceSession, successorSession) {
-    successorSession.players.forEach((player) => {
-      this.emitToPlayer(player, 'next-game-ready', this.buildJoinedPayload(successorSession, player, {
-        previousSessionId: sourceSession.id,
-        reconnected: false,
-      }));
-    });
-  }
-
-  async generateQuiz(payload, context = {}) {
-    const { topic, language } = generateQuizSchema.parse(payload);
-    return this.generateQuizForContext({ topic, language }, context);
-  }
-
-  emitSessionUpdate(session) {
-    session.players.forEach((player) => {
-      this.emitToPlayer(player, 'session-updated', {
-        ...session.toSessionSummary(player.playerId),
-        isAdmin: player.isHost,
-        playerId: player.playerId,
-        activePhaseData: this.buildPhaseSnapshot(session, player),
-      });
-    });
-  }
-
-  emitToPlayer(player, eventName, payload) {
-    if (!player?.socketId) {
-      return;
-    }
-
-    this.io.to(player.socketId).emit(eventName, payload);
-  }
-
-  buildQuestionPayload(session, player) {
+  buildQuestionPayload(session) {
     const question = session.questions[session.currentQuestionIndex];
-    const existingAnswer = player?.answers[session.currentQuestionIndex] || null;
-
     return {
       roundId: session.currentRoundId,
+      questionIndex: session.currentQuestionIndex,
       questionNumber: session.currentQuestionIndex + 1,
       totalQuestions: session.questions.length,
       question: question.question,
@@ -334,447 +309,207 @@ class GameService {
       questionStartedAt: session.currentQuestionStartedAt,
       questionEndsAt: session.currentQuestionEndsAt,
       serverTime: Date.now(),
-      submittedAnswerIndex: existingAnswer ? existingAnswer.answerIndex : null,
     };
   }
 
-  buildResultsPayload(session, player) {
-    const currentQuestion = session.questions[session.currentQuestionIndex];
-    const answerStats = buildAnswerStats(session.players.values(), session.currentQuestionIndex);
-    const leaderboard = session.toSessionSummary().leaderboard;
-    const playerAnswer = player?.answers[session.currentQuestionIndex] || null;
+  buildAnswerStats(session) {
+    const stats = [0, 0, 0, 0];
+    for (const player of session.players.values()) {
+      const answer = player.answers[session.currentQuestionIndex];
+      if (answer) stats[answer.answerIndex] += 1;
+    }
+    return stats;
+  }
 
+  buildResultsPayload(session) {
+    const question = session.questions[session.currentQuestionIndex];
     return {
       roundId: session.currentRoundId,
-      questionText: currentQuestion.question,
-      correctAnswer: currentQuestion.correctAnswerIndex,
-      correctAnswerText: currentQuestion.choices[currentQuestion.correctAnswerIndex],
-      answerStats,
-      leaderboard,
-      isLastQuestion: session.currentQuestionIndex === session.questions.length - 1,
-      playerAnswer: playerAnswer ? playerAnswer.answerIndex : null,
-      earnedPoints: playerAnswer ? playerAnswer.points : 0,
-      answerWasCorrect: playerAnswer ? playerAnswer.isCorrect : false,
-      allChoices: currentQuestion.choices,
-      revealTiming: session.revealTiming,
+      questionIndex: session.currentQuestionIndex,
+      questionNumber: session.currentQuestionIndex + 1,
+      totalQuestions: session.questions.length,
+      questionText: question.question,
+      choices: question.choices,
+      correctAnswer: question.correctAnswerIndex,
+      answerStats: this.buildAnswerStats(session),
+      leaderboard: session.getLeaderboard(),
+      isLastQuestion: session.currentQuestionIndex >= session.questions.length - 1,
     };
   }
 
-  buildPhaseSnapshot(session, player) {
+  buildRoundResult(session, player) {
+    const answer = player?.answers[session.currentQuestionIndex] || null;
+    return {
+      roundId: session.currentRoundId,
+      answerIndex: answer ? answer.answerIndex : null,
+      points: answer ? answer.points : 0,
+      correct: Boolean(answer?.isCorrect),
+    };
+  }
+
+  buildSnapshot(session, player) {
+    const snapshot = { session: session.toSummary(), playerId: player?.playerId || null, phase: session.gameState };
     if (session.gameState === 'question') {
-      return this.buildQuestionPayload(session, player);
+      snapshot.question = this.buildQuestionPayload(session);
+      snapshot.yourAnswerIndex = player?.answers[session.currentQuestionIndex]?.answerIndex ?? null;
+      snapshot.answeredCount = this.countAnswers(session);
+    } else if (session.gameState === 'results') {
+      snapshot.results = this.buildResultsPayload(session);
+      snapshot.roundResult = this.buildRoundResult(session, player);
+    } else if (session.gameState === 'ended') {
+      snapshot.leaderboard = session.getLeaderboard();
     }
-
-    if (session.gameState === 'results') {
-      return this.buildResultsPayload(session, player);
-    }
-
-    if (session.gameState === 'ended') {
-      return {
-        leaderboard: session.toSessionSummary().leaderboard,
-      };
-    }
-
-    return null;
+    return snapshot;
   }
 
-  emitPhaseSnapshot(session, player) {
-    if (!player) {
-      return;
+  countAnswers(session) {
+    let count = 0;
+    for (const player of session.players.values()) {
+      if (player.answers[session.currentQuestionIndex]) count += 1;
     }
+    return count;
+  }
 
-    if (session.gameState === 'question') {
-      this.emitToPlayer(player, 'question-start', this.buildQuestionPayload(session, player));
-      return;
-    }
+  broadcastSummary(session) {
+    clearTimeout(session.summaryTimer);
+    session.summaryTimer = null;
+    this.io.to(session.id).emit('session-updated', session.toSummary());
+  }
 
-    if (session.gameState === 'results') {
-      this.emitToPlayer(player, 'question-results', this.buildResultsPayload(session, player));
-      return;
-    }
+  // Joins and drops arrive in bursts (a class scanning the QR code); coalesce them.
+  broadcastSummarySoon(session) {
+    if (session.summaryTimer) return;
+    session.summaryTimer = setTimeout(() => {
+      session.summaryTimer = null;
+      if (this.store.getSession(session.id)) this.broadcastSummary(session);
+    }, 150);
+    session.summaryTimer.unref?.();
+  }
 
-    if (session.gameState === 'ended') {
-      this.emitToPlayer(player, 'game-end', {
-        leaderboard: session.toSessionSummary().leaderboard,
-      });
+  emitToPlayer(player, eventName, payload) {
+    if (player?.socketId) {
+      this.io.to(player.socketId).emit(eventName, payload);
     }
   }
 
-  handleRecoveredConnection(socket) {
-    const sessionId = socket.data?.sessionId || null;
-    const playerId = socket.data?.playerId || null;
-    if (!sessionId || !playerId) {
-      this.log('recovered_socket_missing_data', {
-        socketId: socket.id,
-      });
-      return;
-    }
-
-    const session = this.store.getSession(sessionId);
-    const player = session?.players.get(playerId) || null;
-    if (!session || !player) {
-      this.log('recovered_socket_missing_session', {
-        socketId: socket.id,
-        sessionId,
-        playerId,
-      });
-      return;
-    }
-
-    this.store.bindSocket({
-      sessionId,
-      playerId,
-      socketId: socket.id,
-    });
-    session.reconnectPlayer(player, socket.id, player.username, {
-      hostToken: socket.data.hostToken,
-    });
-    this.emitSessionUpdate(session);
-    this.emitPhaseSnapshot(session, player);
-    this.log('recovered_socket_rebound', {
-      socketId: socket.id,
-      sessionId,
-      playerId,
-      gameState: session.gameState,
-    });
-  }
+  // ---------------------------------------------------------------- joining
 
   joinSession(socket, rawPayload) {
     const payload = joinGameSchema.parse(rawPayload);
-    const clientIp = getSocketClientIp(socket);
-    const joinLimit = this.joinRateLimiter.consume(`${clientIp}:${payload.sessionId}`);
-    if (!joinLimit.allowed) {
-      throw new Error('Too many join attempts. Please wait a moment and try again.');
+    const clientIp = getSocketClientIp(socket, this.config.trustProxy);
+    if (this.isShuttingDown) {
+      throw new UserFacingError('Kazoot is restarting for an update. Please try again in a minute.', { code: 'restarting' });
+    }
+    if (!this.joinRateLimiter.consume(`${clientIp}:${payload.sessionId}`).allowed) {
+      throw new UserFacingError('Too many join attempts. Please wait a moment and try again.', { code: 'rate_limited' });
     }
 
     const session = this.store.getSession(payload.sessionId);
-
     if (!session) {
-      const failedLimit = this.failedJoinRateLimiter.consume(`missing:${clientIp}`);
-      this.log('join_session_missing', {
-        sessionId: payload.sessionId,
-        socketId: socket.id,
-        username: payload.username,
-        knownSessions: this.store.getKnownSessionIds(),
-      });
-      if (!failedLimit.allowed) {
-        throw new Error('Unable to join this room. Check the invite link or room code.');
+      this.metrics.count('join_failed_not_found');
+      if (!this.failedJoinRateLimiter.consume(`missing:${clientIp}`).allowed) {
+        throw new UserFacingError('Too many attempts with unknown room codes. Please wait a few minutes.', { code: 'rate_limited' });
       }
-      throw new Error('Game session not found');
+      throw new UserFacingError('We couldn’t find that room. Check the code — it may also have ended or expired.', {
+        code: 'room_not_found',
+        status: 404,
+      });
     }
 
-    const successorMapping = payload.playerToken
-      ? session.successorPlayerTokenMap?.get(payload.playerToken)
-      : null;
-    const successorSession = successorMapping
-      ? this.store.getSession(successorMapping.sessionId)
-      : null;
-    const successorPlayer = successorSession
-      ? successorSession.getPlayerByToken(successorMapping.playerToken)
-      : null;
-    if (session.gameState === 'ended' && successorSession && successorPlayer) {
-      successorSession.reconnectPlayer(successorPlayer, socket.id, payload.username, {
-        hostToken: successorMapping.hostToken || payload.hostToken,
-      });
-      socket.leave(session.id);
-      socket.join(successorSession.id);
-      this.store.bindSocket({
-        sessionId: successorSession.id,
-        playerId: successorPlayer.playerId,
-        socketId: socket.id,
-      });
-      socket.data.sessionId = successorSession.id;
-      socket.data.playerId = successorPlayer.playerId;
-      socket.data.playerToken = successorPlayer.playerToken;
-      socket.data.hostToken = successorPlayer.hostToken || null;
-
-      const readyPayload = this.buildJoinedPayload(successorSession, successorPlayer, {
-        previousSessionId: session.id,
-        reconnected: true,
-      });
+    // A player from a finished game whose host started the next one follows along.
+    const successorMapping = payload.playerToken ? session.successorPlayerTokenMap.get(payload.playerToken) : null;
+    const successor = successorMapping ? this.store.getSession(successorMapping.sessionId) : null;
+    const successorPlayer = successor?.players.get(successorMapping.playerId);
+    if (successor && successorPlayer) {
+      successor.reconnectPlayer(successorPlayer, socket.id);
+      this.moveSocket(socket, session, successor, successorPlayer);
+      const readyPayload = this.buildJoinedPayload(successor, successorPlayer, { previousSessionId: session.id, reconnected: true });
       socket.emit('next-game-ready', readyPayload);
-      this.emitSessionUpdate(successorSession);
-      this.emitPhaseSnapshot(successorSession, successorPlayer);
+      socket.emit('state-snapshot', this.buildSnapshot(successor, successorPlayer));
+      this.broadcastSummary(successor);
       return readyPayload;
     }
 
-    let player = null;
+    let player = payload.playerToken ? session.getPlayerByToken(payload.playerToken) : null;
     let reconnected = false;
-    const hostBeforeJoin = session.getHost();
+    const hostBefore = session.getHostPlayer()?.playerId || null;
 
-    if (payload.playerToken) {
-      player = session.getPlayerByToken(payload.playerToken);
-      if (player) {
-        if (
-          player.username.trim().toLowerCase() !== payload.username.trim().toLowerCase() &&
-          session.gameState !== 'waiting'
-        ) {
-          throw new Error('Saved player token does not match this player name');
-        }
-
-        player = session.reconnectPlayer(player, socket.id, payload.username, {
-          hostToken: payload.hostToken,
-        });
-        reconnected = true;
+    if (player) {
+      const wasOffline = session.reconnectPlayer(player, socket.id, { username: payload.username, hostToken: payload.hostToken });
+      reconnected = true;
+      if (wasOffline) {
+        this.metrics.count('reconnects');
+        socket.to(session.id).emit('player-reconnected', { playerId: player.playerId, username: player.username });
       }
+    } else {
+      if (session.gameState === 'ended') {
+        throw new UserFacingError('This game has already finished.', { code: 'game_ended', status: 409 });
+      }
+      if (session.players.size >= session.maxPlayers) {
+        this.metrics.count('join_failed_full');
+        throw new UserFacingError(`This room is full (${session.maxPlayers} players).`, { code: 'room_full', status: 409 });
+      }
+      if (this.store.getHealthSnapshot().connectedPlayers >= this.config.maxConnectedPlayers) {
+        throw new UserFacingError('Kazoot is very busy right now. Please try again in a few minutes.', { code: 'at_capacity', status: 503 });
+      }
+      player = session.addPlayer({ username: payload.username, socketId: socket.id, hostToken: payload.hostToken });
+      socket.to(session.id).emit('player-joined', { playerId: player.playerId, username: player.username });
     }
 
-    if (!player) {
-      if (session.gameState !== 'waiting') {
-        throw new Error('Game already in progress. Rejoin with your saved player token.');
-      }
-
-      const totalConnectedPlayers = this.store.getHealthSnapshot().connectedPlayers;
-      if (totalConnectedPlayers >= this.config.maxConnectedPlayers) {
-        throw new Error('The server is at the connected player limit. Try again in a few minutes.');
-      }
-
-      if (session.players.size >= this.config.maxPlayersPerSession) {
-        throw new Error('This room is full.');
-      }
-
-      player = session.addPlayer({
-        username: payload.username,
-        socketId: socket.id,
-        hostToken: payload.hostToken,
-      });
+    // If this socket was previously seated elsewhere, leave that room.
+    if (socket.data.sessionId && socket.data.sessionId !== session.id) {
+      socket.leave(socket.data.sessionId);
     }
-
     socket.join(session.id);
-    this.store.bindSocket({
-      sessionId: session.id,
-      playerId: player.playerId,
-      socketId: socket.id,
-    });
+    this.store.bindSocket({ sessionId: session.id, playerId: player.playerId, socketId: socket.id });
     socket.data.sessionId = session.id;
     socket.data.playerId = player.playerId;
-    socket.data.playerToken = player.playerToken;
-    socket.data.hostToken = player.hostToken || payload.hostToken || null;
 
     const joinedPayload = this.buildJoinedPayload(session, player, { reconnected });
-
     socket.emit('joined-game', joinedPayload);
-    this.emitSessionUpdate(session);
-    this.emitPhaseSnapshot(session, player);
-    const hostAfterJoin = session.getHost();
-    if (hostAfterJoin && hostBeforeJoin?.playerId !== hostAfterJoin.playerId) {
-      this.io.to(session.id).emit('admin-changed', {
-        newAdminId: hostAfterJoin.playerId,
-        newAdminUsername: hostAfterJoin.username,
-        isTemporaryHost: hostAfterJoin.isTemporaryHost,
-      });
-    }
-    this.log('join_session_success', {
+    socket.emit('state-snapshot', this.buildSnapshot(session, player));
+    this.broadcastSummarySoon(session);
+    this.announceHostChange(session, hostBefore);
+    this.clearHostGraceIfOwnerBack(session);
+
+    this.logger.info('player_joined', {
       sessionId: session.id,
-      playerId: player.playerId,
-      username: player.username,
       reconnected,
-      isTemporaryHost: player.isTemporaryHost,
       gameState: session.gameState,
-      connectedPlayerCount: session.getConnectedPlayers().length,
+      players: session.players.size,
     });
-
-    if (reconnected) {
-      socket.to(session.id).emit('player-reconnected', {
-        username: player.username,
-        playerId: player.playerId,
-        connectedPlayerCount: session.getConnectedPlayers().length,
-      });
-    } else {
-      socket.to(session.id).emit('player-joined', {
-        username: player.username,
-        playerId: player.playerId,
-        connectedPlayerCount: session.getConnectedPlayers().length,
-      });
-    }
-
     return joinedPayload;
   }
 
-  startQuestion(session, questionIndex) {
-    const question = session.questions[questionIndex];
-    session.clearTimer();
-    session.gameState = 'question';
-    session.currentQuestionIndex = questionIndex;
-    session.currentRoundId = `${questionIndex + 1}-${Date.now()}`;
-    session.currentQuestionStartedAt = Date.now();
-    session.currentQuestionEndsAt =
-      session.currentQuestionStartedAt + session.questionTimeLimitMs;
-    session.lastResults = null;
-    session.touch();
-
-    session.currentQuestionTimer = setTimeout(() => {
-      this.finishQuestion(session.id, session.currentRoundId);
-    }, session.questionTimeLimitMs);
-
-    session.players.forEach((player) => {
-      this.emitToPlayer(player, 'question-start', this.buildQuestionPayload(session, player));
-    });
-
-    this.emitSessionUpdate(session);
-    this.log('question_started', {
-      sessionId: session.id,
-      roundId: session.currentRoundId,
-      questionIndex,
-      connectedPlayerCount: session.getConnectedPlayers().length,
-      endsAt: session.currentQuestionEndsAt,
-      revealTiming: session.revealTiming,
-    });
-    return question;
-  }
-
-  startGame(socketId) {
-    const { session, player } = this.store.getBySocketId(socketId);
+  // Lightweight resync after the tab regains focus or the network returns.
+  syncState(socket) {
+    const { session, player } = this.store.getBySocketId(socket.id);
     if (!session || !player) {
-      throw new Error('You are not in a game');
+      return { ok: false, code: 'not_joined' };
     }
-
-    if (!session.canControlGame(player)) {
-      throw new Error('Only the game host can start the game');
-    }
-
-    if (session.gameState !== 'waiting') {
-      throw new Error('Game has already started');
-    }
-
-    this.startQuestion(session, 0);
+    socket.emit('state-snapshot', this.buildSnapshot(session, player));
+    return { ok: true, phase: session.gameState };
   }
 
-  submitAnswer(socketId, rawPayload) {
-    const payload = submitAnswerSchema.parse(rawPayload);
-    const { session, player } = this.store.getBySocketId(socketId);
-
+  leaveSession(socket) {
+    const { session, player } = this.store.unbindSocket(socket.id);
+    socket.data.sessionId = null;
+    socket.data.playerId = null;
     if (!session || !player) {
-      throw new Error('You are not in a game');
+      return { ok: true };
     }
-
-    if (session.gameState !== 'question') {
-      throw new Error('No active question');
+    socket.leave(session.id);
+    const hostBefore = session.getHostPlayer()?.playerId || null;
+    const isOwner = player.playerId === session.hostOwnerPlayerId;
+    if (session.gameState === 'waiting' && !isOwner) {
+      session.removePlayer(player.playerId);
+    } else {
+      // Leaving on purpose: no grace period before someone else can host.
+      session.markDisconnected(player.playerId, { skipGrace: true });
     }
-
-    if (payload.roundId !== session.currentRoundId) {
-      throw new Error('This question has already ended');
-    }
-
-    if (Date.now() > session.currentQuestionEndsAt) {
-      throw new Error('This question has already ended');
-    }
-
-    const questionIndex = session.currentQuestionIndex;
-    if (player.answers[questionIndex]) {
-      return {
-        accepted: true,
-        alreadySubmitted: true,
-      };
-    }
-
-    const question = session.questions[questionIndex];
-    const isCorrect = payload.answerIndex === question.correctAnswerIndex;
-    const timeRemainingMs = Math.max(0, session.currentQuestionEndsAt - Date.now());
-    const points = isCorrect
-      ? Math.round(1000 + (timeRemainingMs / 1000) * 50)
-      : 0;
-
-    player.answers[questionIndex] = {
-      roundId: session.currentRoundId,
-      answerIndex: payload.answerIndex,
-      isCorrect,
-      points,
-      submittedAt: Date.now(),
-    };
-    player.score += points;
-    session.touch();
-    this.log('answer_submitted', {
-      sessionId: session.id,
-      roundId: session.currentRoundId,
-      playerId: player.playerId,
-      answerIndex: payload.answerIndex,
-      isCorrect,
-      points,
-      timeRemainingMs,
-    });
-
-    if (session.revealTiming === 'all_answered' && haveAllConnectedPlayersAnswered(session)) {
-      this.log('all_connected_players_answered', {
-        sessionId: session.id,
-        roundId: session.currentRoundId,
-        connectedPlayerCount: session.getConnectedPlayers().length,
-      });
-      this.finishQuestion(session.id, session.currentRoundId);
-    }
-
-    return {
-      accepted: true,
-      alreadySubmitted: false,
-    };
-  }
-
-  finishQuestion(sessionId, expectedRoundId) {
-    const session = this.store.getSession(sessionId);
-    if (!session) {
-      this.log('finish_question_missing_session', {
-        sessionId,
-        expectedRoundId,
-      });
-      return;
-    }
-
-    if (session.gameState !== 'question' || session.currentRoundId !== expectedRoundId) {
-      this.log('finish_question_skipped', {
-        sessionId,
-        expectedRoundId,
-        actualRoundId: session.currentRoundId,
-        gameState: session.gameState,
-      });
-      return;
-    }
-
-    session.clearTimer();
-    session.gameState = 'results';
-    session.touch();
-
-    const answerStats = buildAnswerStats(session.players.values(), session.currentQuestionIndex);
-    this.log('question_finished', {
-      sessionId,
-      roundId: expectedRoundId,
-      questionIndex: session.currentQuestionIndex,
-      answerStats,
-      connectedPlayerCount: session.getConnectedPlayers().length,
-    });
-
-    session.players.forEach((player) => {
-      this.emitToPlayer(player, 'question-results', this.buildResultsPayload(session, player));
-    });
-
-    this.emitSessionUpdate(session);
-  }
-
-  advance(socketId) {
-    const { session, player } = this.store.getBySocketId(socketId);
-    if (!session || !player) {
-      throw new Error('You are not in a game');
-    }
-
-    if (!session.canControlGame(player)) {
-      throw new Error('Only the game host can continue');
-    }
-
-    if (session.gameState !== 'results') {
-      throw new Error('Wait for the results screen before continuing');
-    }
-
-    if (session.currentQuestionIndex >= session.questions.length - 1) {
-      session.clearTimer();
-      session.gameState = 'ended';
-      session.endedAt = Date.now();
-      session.touch();
-      const leaderboard = session.toSessionSummary().leaderboard;
-      this.io.to(session.id).emit('game-end', { leaderboard });
-      this.emitSessionUpdate(session);
-      return;
-    }
-
-    this.startQuestion(session, session.currentQuestionIndex + 1);
+    this.io.to(session.id).emit('player-left', { playerId: player.playerId, username: player.username });
+    this.afterPlayerLost(session, hostBefore);
+    return { ok: true };
   }
 
   handleDisconnect(socketId) {
@@ -782,49 +517,261 @@ class GameService {
     if (!session || !player) {
       return;
     }
-
-    const oldHostId = session.getHost()?.playerId || null;
+    const hostBefore = session.getHostPlayer()?.playerId || null;
     session.markDisconnected(player.playerId);
-    const newHost = session.getHost();
-
-    this.io.to(session.id).emit('player-left', {
-      username: player.username,
-      playerId: player.playerId,
-      connectedPlayerCount: session.getConnectedPlayers().length,
-    });
-
-    if (oldHostId && newHost && oldHostId !== newHost.playerId) {
-      this.io.to(session.id).emit('admin-changed', {
-        newAdminId: newHost.playerId,
-        newAdminUsername: newHost.username,
-        isTemporaryHost: newHost.isTemporaryHost,
-      });
+    this.io.to(session.id).emit('player-left', { playerId: player.playerId, username: player.username });
+    if (player.playerId === session.hostOwnerPlayerId) {
+      this.scheduleHostGrace(session);
     }
+    this.afterPlayerLost(session, hostBefore);
+  }
 
-    if (session.revealTiming === 'all_answered' && haveAllConnectedPlayersAnswered(session)) {
-      this.log('all_connected_players_answered_after_disconnect', {
-        sessionId: session.id,
-        roundId: session.currentRoundId,
-        connectedPlayerCount: session.getConnectedPlayers().length,
-      });
+  afterPlayerLost(session, hostBefore) {
+    this.announceHostChange(session, hostBefore);
+    if (session.gameState === 'question' && session.revealTiming === 'all_answered' && this.haveAllConnectedAnswered(session)) {
       this.finishQuestion(session.id, session.currentRoundId);
       return;
     }
+    this.broadcastSummarySoon(session);
+  }
 
-    this.emitSessionUpdate(session);
+  scheduleHostGrace(session) {
+    clearTimeout(session.hostGraceTimer);
+    if (!session.hostGraceMs) {
+      return;
+    }
+    session.hostGraceTimer = setTimeout(() => {
+      session.hostGraceTimer = null;
+      if (!this.store.getSession(session.id)) return;
+      const hostBefore = session.getHostPlayer()?.playerId || null;
+      session.refreshHostAuthority();
+      this.announceHostChange(session, hostBefore);
+      this.broadcastSummary(session);
+    }, session.hostGraceMs + 50);
+    session.hostGraceTimer.unref?.();
+  }
+
+  clearHostGraceIfOwnerBack(session) {
+    if (session.getHostStatus() === 'present') {
+      clearTimeout(session.hostGraceTimer);
+      session.hostGraceTimer = null;
+    }
+  }
+
+  announceHostChange(session, hostBefore) {
+    const host = session.getHostPlayer();
+    if (host && host.playerId !== hostBefore) {
+      this.io.to(session.id).emit('host-changed', {
+        playerId: host.playerId,
+        username: host.username,
+        role: session.getRole(host),
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------- gameplay
+
+  requireSeat(socketId) {
+    const { session, player } = this.store.getBySocketId(socketId);
+    if (!session || !player) {
+      throw new UserFacingError('You’re not connected to a game. Rejoining…', { code: 'not_joined', status: 409 });
+    }
+    return { session, player };
+  }
+
+  requireHost(session, player) {
+    if (!session.canControlGame(player)) {
+      throw new UserFacingError(
+        session.getHostStatus() === 'reconnecting'
+          ? 'The host is reconnecting. They’ll be able to continue in a moment.'
+          : 'Only the host can do that.',
+        { code: 'not_host', status: 403 }
+      );
+    }
+  }
+
+  startGame(socketId) {
+    const { session, player } = this.requireSeat(socketId);
+    this.requireHost(session, player);
+    if (session.gameState !== 'waiting') {
+      return { ok: true, alreadyStarted: true };
+    }
+    session.startedAt = Date.now();
+    this.metrics.track('game_started', { kind: session.isDemo ? 'demo' : 'ai', players: session.players.size });
+    this.startQuestion(session, 0);
+    return { ok: true };
+  }
+
+  startQuestion(session, questionIndex) {
+    session.clearTimer();
+    session.gameState = 'question';
+    session.currentQuestionIndex = questionIndex;
+    session.currentRoundId = `${session.id}-${questionIndex + 1}-${Date.now().toString(36)}`;
+    session.currentQuestionStartedAt = Date.now();
+    session.currentQuestionEndsAt = session.currentQuestionStartedAt + session.questionTimeLimitMs;
+    session.touch();
+
+    const roundId = session.currentRoundId;
+    // Late answers sent just before the deadline still count (network grace).
+    session.currentQuestionTimer = setTimeout(() => {
+      this.finishQuestion(session.id, roundId);
+    }, session.questionTimeLimitMs + this.config.answerGraceMs);
+    session.currentQuestionTimer.unref?.();
+
+    this.io.to(session.id).emit('question-start', this.buildQuestionPayload(session));
+    this.broadcastSummary(session);
+  }
+
+  submitAnswer(socketId, rawPayload) {
+    const payload = submitAnswerSchema.parse(rawPayload);
+    const { session, player } = this.requireSeat(socketId);
+
+    if (session.gameState !== 'question' || payload.roundId !== session.currentRoundId) {
+      throw new UserFacingError('That question has already closed.', { code: 'round_closed', status: 409 });
+    }
+
+    const questionIndex = session.currentQuestionIndex;
+    const existing = player.answers[questionIndex];
+    if (existing) {
+      // Idempotent: repeat taps and retries return the original answer.
+      return { ok: true, accepted: true, alreadySubmitted: true, answerIndex: existing.answerIndex, roundId: payload.roundId };
+    }
+
+    const now = Date.now();
+    if (now > session.currentQuestionEndsAt + this.config.answerGraceMs) {
+      throw new UserFacingError('Time was up before your answer arrived.', { code: 'round_closed', status: 409 });
+    }
+
+    const question = session.questions[questionIndex];
+    const isCorrect = payload.answerIndex === question.correctAnswerIndex;
+    const earned = isCorrect ? points(session.currentQuestionEndsAt - now, session.questionTimeLimitMs) : 0;
+    player.answers[questionIndex] = {
+      roundId: session.currentRoundId,
+      answerIndex: payload.answerIndex,
+      isCorrect,
+      points: earned,
+      submittedAt: now,
+    };
+    player.score += earned;
+    session.touch();
+
+    this.scheduleAnswerProgress(session);
+
+    if (session.revealTiming === 'all_answered' && this.haveAllConnectedAnswered(session)) {
+      // Reveal after the acknowledgement has been sent.
+      setImmediate(() => this.finishQuestion(session.id, payload.roundId));
+    }
+
+    return { ok: true, accepted: true, alreadySubmitted: false, answerIndex: payload.answerIndex, roundId: payload.roundId };
+  }
+
+  // Answer counts are broadcast at most every 250 ms per room: one broadcast per
+  // answer would be O(players²) messages per question in big rooms.
+  scheduleAnswerProgress(session) {
+    if (session.answerProgressTimer) return;
+    session.answerProgressTimer = setTimeout(() => {
+      session.answerProgressTimer = null;
+      if (session.gameState !== 'question') return;
+      this.io.to(session.id).emit('answer-progress', {
+        roundId: session.currentRoundId,
+        answeredCount: this.countAnswers(session),
+        connectedCount: session.getConnectedPlayers().length,
+      });
+    }, 250);
+    session.answerProgressTimer.unref?.();
+  }
+
+  haveAllConnectedAnswered(session) {
+    const connected = session.getConnectedPlayers();
+    return connected.length > 0 && connected.every((player) => Boolean(player.answers[session.currentQuestionIndex]));
+  }
+
+  finishQuestion(sessionId, expectedRoundId) {
+    const session = this.store.getSession(sessionId);
+    if (!session || session.gameState !== 'question' || session.currentRoundId !== expectedRoundId) {
+      return;
+    }
+
+    session.clearTimer();
+    session.gameState = 'results';
+    session.touch();
+
+    this.io.to(session.id).emit('question-results', this.buildResultsPayload(session));
+    session.players.forEach((player) => {
+      this.emitToPlayer(player, 'round-result', this.buildRoundResult(session, player));
+    });
+    this.broadcastSummary(session);
+  }
+
+  advance(socketId, rawPayload) {
+    const { fromQuestionIndex } = advanceSchema.parse(rawPayload || {});
+    const { session, player } = this.requireSeat(socketId);
+    this.requireHost(session, player);
+
+    if (typeof fromQuestionIndex === 'number' && fromQuestionIndex !== session.currentQuestionIndex) {
+      // A delayed or repeated click from an earlier screen: ignore it.
+      return { ok: true, stale: true };
+    }
+    if (session.gameState !== 'results') {
+      return { ok: true, stale: true };
+    }
+
+    if (session.currentQuestionIndex >= session.questions.length - 1) {
+      this.endGame(session);
+      return { ok: true, ended: true };
+    }
+
+    this.startQuestion(session, session.currentQuestionIndex + 1);
+    return { ok: true };
+  }
+
+  endGame(session) {
+    session.clearTimer();
+    session.gameState = 'ended';
+    session.endedAt = Date.now();
+    session.touch();
+    this.io.to(session.id).emit('game-end', { leaderboard: session.getLeaderboard() });
+    this.broadcastSummary(session);
+    this.metrics.track('game_completed', {
+      kind: session.isDemo ? 'demo' : 'ai',
+      players: session.players.size,
+      questions: session.questions.length,
+    });
+  }
+
+  // --------------------------------------------------------------- lifecycle
+
+  notifyShutdown() {
+    this.isShuttingDown = true;
+    this.io.emit('server-restarting', {
+      message: 'Kazoot is restarting for an update. Games in progress can’t continue — sorry! Please start a new game in a minute.',
+    });
   }
 
   wrapSocketHandler(socket, handler) {
-    return async (payload = {}) => {
+    return async (payload, ack) => {
+      if (typeof payload === 'function') {
+        ack = payload;
+        payload = {};
+      }
+      const reply = typeof ack === 'function' ? ack : null;
       try {
-        const clientIp = getSocketClientIp(socket);
-        const eventLimit = this.socketEventRateLimiter.consume(`${clientIp}:${socket.id}`);
-        if (!eventLimit.allowed) {
-          throw new Error('Too many socket actions. Please slow down.');
+        const clientIp = getSocketClientIp(socket, this.config.trustProxy);
+        if (!this.socketEventRateLimiter.consume(`${clientIp}:${socket.id}`).allowed) {
+          throw new UserFacingError('Too many actions. Please slow down.', { code: 'rate_limited', status: 429 });
         }
-        await handler(payload);
+        const result = await handler(payload || {});
+        reply?.({ ok: true, ...(result || {}) });
       } catch (error) {
-        socket.emit('error', { message: formatValidationError(error) });
+        const clientError = toClientError(error);
+        if (clientError.status >= 500) {
+          this.logger.error('socket_handler_failed', { message: error.message, stack: error.stack });
+        }
+        if (reply) {
+          reply({ ok: false, code: clientError.code, message: clientError.message });
+        } else {
+          socket.emit('action-error', { code: clientError.code, message: clientError.message });
+        }
       }
     };
   }
@@ -832,5 +779,6 @@ class GameService {
 
 module.exports = {
   GameService,
-  formatValidationError,
+  getSocketClientIp,
+  points,
 };

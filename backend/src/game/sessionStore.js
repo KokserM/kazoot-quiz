@@ -1,53 +1,39 @@
-const { randomUUID } = require('crypto');
+const { randomUUID, randomInt } = require('crypto');
+
+// All room state lives in this process. Production runs exactly one replica
+// (see DEPLOYMENT.md); a restart ends live games, and clients are told so.
 
 const SESSION_ID_LENGTH = 10;
 const SESSION_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function generateSessionId() {
-  const bytes = Buffer.from(randomUUID().replace(/-/g, ''), 'hex');
   let code = '';
   for (let index = 0; index < SESSION_ID_LENGTH; index += 1) {
-    code += SESSION_ID_ALPHABET[bytes[index] % SESSION_ID_ALPHABET.length];
+    code += SESSION_ID_ALPHABET[randomInt(SESSION_ID_ALPHABET.length)];
   }
   return code;
 }
 
-function getAnswerStats(player, totalQuestions) {
-  const answers = Object.values(player.answers || {});
-  return {
-    answeredCount: answers.length,
-    correctAnswerCount: answers.filter((answer) => answer?.isCorrect === true).length,
-    totalQuestions,
-  };
-}
-
 function buildLeaderboard(players, totalQuestions) {
   return [...players]
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-
-      return left.joinedAt - right.joinedAt;
-    })
+    .sort((left, right) => right.score - left.score || left.joinedAt - right.joinedAt)
     .map((player, index) => {
-      const answerStats = getAnswerStats(player, totalQuestions);
+      const answers = Object.values(player.answers);
       return {
         rank: index + 1,
         playerId: player.playerId,
         username: player.username,
         score: player.score,
-        ...answerStats,
-        isHost: player.isHost,
-        isTemporaryHost: player.isTemporaryHost,
-        hostAuthority: player.hostAuthority,
+        answeredCount: answers.length,
+        correctAnswerCount: answers.filter((answer) => answer.isCorrect).length,
+        totalQuestions,
         connected: player.connected,
       };
     });
 }
 
 class GameSession {
-  constructor({ id, topic, language, questions, questionSource, questionTimeLimitMs, revealTiming }) {
+  constructor({ id, topic, language, questions, questionSource, questionTimeLimitMs, revealTiming, isDemo = false, demoId = null, reviewMode = false, maxPlayers, hostGraceMs = 0 }) {
     this.id = id;
     this.topic = topic;
     this.language = language;
@@ -55,6 +41,12 @@ class GameSession {
     this.questionSource = questionSource;
     this.questionTimeLimitMs = questionTimeLimitMs;
     this.revealTiming = revealTiming;
+    this.isDemo = isDemo;
+    this.demoId = demoId;
+    this.reviewMode = reviewMode;
+    this.hostReviewed = false;
+    this.maxPlayers = maxPlayers;
+    this.hostGraceMs = hostGraceMs;
     this.players = new Map();
     this.gameState = 'waiting';
     this.currentQuestionIndex = -1;
@@ -62,13 +54,14 @@ class GameSession {
     this.currentQuestionStartedAt = null;
     this.currentQuestionEndsAt = null;
     this.currentQuestionTimer = null;
-    this.lastResults = null;
+    this.hostGraceTimer = null;
     this.createdAt = Date.now();
     this.updatedAt = this.createdAt;
-    this.lastConnectedAt = this.createdAt;
+    this.startedAt = null;
     this.endedAt = null;
     this.hostOwnerToken = randomUUID();
     this.hostOwnerPlayerId = null;
+    this.ownerDisconnectedAt = null;
     this.temporaryHostPlayerId = null;
     this.successorSessionId = null;
     this.successorPlayerTokenMap = new Map();
@@ -79,169 +72,157 @@ class GameSession {
   }
 
   clearTimer() {
-    if (this.currentQuestionTimer) {
-      clearTimeout(this.currentQuestionTimer);
-      this.currentQuestionTimer = null;
-    }
+    clearTimeout(this.currentQuestionTimer);
+    this.currentQuestionTimer = null;
+  }
+
+  clearAllTimers() {
+    this.clearTimer();
+    clearTimeout(this.hostGraceTimer);
+    this.hostGraceTimer = null;
+    clearTimeout(this.answerProgressTimer);
+    this.answerProgressTimer = null;
+    clearTimeout(this.summaryTimer);
+    this.summaryTimer = null;
   }
 
   getConnectedPlayers() {
     return [...this.players.values()].filter((player) => player.connected);
   }
 
-  getHost() {
-    return [...this.players.values()].find((player) => player.isHost) || null;
-  }
-
   isValidHostToken(hostToken) {
     return typeof hostToken === 'string' && hostToken === this.hostOwnerToken;
   }
 
-  getHostAuthority(player) {
-    if (!player) {
-      return 'none';
-    }
+  getOwner() {
+    return this.hostOwnerPlayerId ? this.players.get(this.hostOwnerPlayerId) || null : null;
+  }
 
-    if (player.playerId === this.hostOwnerPlayerId) {
-      return 'owner';
-    }
+  // 'present' | 'reconnecting' (within the grace period) | 'away' | 'none' (owner never joined)
+  getHostStatus(now = Date.now()) {
+    const owner = this.getOwner();
+    if (!owner) return 'none';
+    if (owner.connected) return 'present';
+    if (this.ownerDisconnectedAt && now - this.ownerDisconnectedAt < this.hostGraceMs) return 'reconnecting';
+    return 'away';
+  }
 
-    if (player.playerId === this.temporaryHostPlayerId) {
-      return 'temporary';
-    }
-
-    return 'none';
+  getRole(player) {
+    if (!player) return 'none';
+    if (player.playerId === this.hostOwnerPlayerId) return 'owner';
+    if (player.playerId === this.temporaryHostPlayerId) return 'temporary';
+    return 'player';
   }
 
   canControlGame(player) {
-    return Boolean(player?.connected && ['owner', 'temporary'].includes(this.getHostAuthority(player)));
+    if (!player?.connected) return false;
+    const role = this.getRole(player);
+    return role === 'owner' || role === 'temporary';
   }
 
-  getEligibleTemporaryHost() {
-    return this.getConnectedPlayers()
-      .filter((player) => player.playerId !== this.hostOwnerPlayerId)
-      .sort((left, right) => left.joinedAt - right.joinedAt)[0] || null;
-  }
-
-  refreshHostAuthority({ preserveTemporaryHost = true } = {}) {
-    const owner = this.hostOwnerPlayerId ? this.players.get(this.hostOwnerPlayerId) : null;
-
-    if (owner?.connected) {
+  // The owner always controls when connected. If they have been gone longer than
+  // the grace period, the longest-connected player can keep the game moving until
+  // they return. A room with no owner (guest joined via link first) has no host
+  // until the owner arrives.
+  refreshHostAuthority() {
+    const hostStatus = this.getHostStatus();
+    if (hostStatus !== 'away') {
       this.temporaryHostPlayerId = null;
-    } else if (!this.hostOwnerPlayerId) {
-      this.temporaryHostPlayerId = null;
-    } else {
-      const currentTemporaryHost = this.temporaryHostPlayerId
-        ? this.players.get(this.temporaryHostPlayerId)
-        : null;
-      const canKeepTemporaryHost =
-        preserveTemporaryHost &&
-        currentTemporaryHost?.connected &&
-        currentTemporaryHost.playerId !== this.hostOwnerPlayerId;
-
-      if (!canKeepTemporaryHost) {
-        this.temporaryHostPlayerId = this.getEligibleTemporaryHost()?.playerId || null;
-      }
+      return;
     }
 
-    this.players.forEach((player) => {
-      const hostAuthority = this.getHostAuthority(player);
-      player.hostAuthority = hostAuthority;
-      player.isTemporaryHost = hostAuthority === 'temporary';
-      player.isHost = player.connected && (hostAuthority === 'owner' || hostAuthority === 'temporary');
-    });
+    const current = this.temporaryHostPlayerId ? this.players.get(this.temporaryHostPlayerId) : null;
+    if (current?.connected) {
+      return;
+    }
+
+    const candidate = this.getConnectedPlayers()
+      .filter((player) => player.playerId !== this.hostOwnerPlayerId)
+      .sort((left, right) => left.joinedAt - right.joinedAt)[0];
+    this.temporaryHostPlayerId = candidate?.playerId || null;
+  }
+
+  getHostPlayer() {
+    const owner = this.getOwner();
+    if (owner?.connected) return owner;
+    return this.temporaryHostPlayerId ? this.players.get(this.temporaryHostPlayerId) || null : null;
   }
 
   getPlayerByToken(playerToken) {
     return [...this.players.values()].find((player) => player.playerToken === playerToken) || null;
   }
 
-  getPlayerBySocketId(socketId) {
-    return [...this.players.values()].find((player) => player.socketId === socketId) || null;
-  }
-
   addPlayer({ username, socketId, hostToken = null }) {
-    const playerId = randomUUID();
-    const playerToken = randomUUID();
-    const isOwnerHost = this.isValidHostToken(hostToken);
-    const joinedAt = Date.now();
-
     const player = {
-      playerId,
-      playerToken,
-      username: username.trim(),
+      playerId: randomUUID(),
+      playerToken: randomUUID(),
+      username,
       score: 0,
-      isHost: false,
-      isTemporaryHost: false,
-      hostAuthority: 'none',
-      hostToken: isOwnerHost ? this.hostOwnerToken : null,
       connected: true,
       socketId,
-      joinedAt,
+      joinedAt: Date.now(),
       answers: {},
     };
 
-    this.players.set(playerId, player);
-    if (isOwnerHost) {
-      this.hostOwnerPlayerId = playerId;
+    this.players.set(player.playerId, player);
+    if (this.isValidHostToken(hostToken)) {
+      this.hostOwnerPlayerId = player.playerId;
+      this.ownerDisconnectedAt = null;
     }
-    this.refreshHostAuthority({ preserveTemporaryHost: false });
-    this.lastConnectedAt = Date.now();
+    this.refreshHostAuthority();
     this.touch();
     return player;
   }
 
-  reconnectPlayer(player, socketId, username, { hostToken = null } = {}) {
+  // Returns true if the player had been offline (a real reconnect, worth announcing).
+  reconnectPlayer(player, socketId, { username = null, hostToken = null } = {}) {
+    const wasOffline = !player.connected;
     player.connected = true;
     player.socketId = socketId;
-    player.username = username?.trim() || player.username;
-
-    if (this.isValidHostToken(hostToken) || player.hostToken === this.hostOwnerToken) {
-      player.hostToken = this.hostOwnerToken;
+    if (username && this.gameState === 'waiting') {
+      player.username = username;
+    }
+    if (this.isValidHostToken(hostToken)) {
       this.hostOwnerPlayerId = player.playerId;
     }
-
-    this.refreshHostAuthority({ preserveTemporaryHost: false });
-    this.lastConnectedAt = Date.now();
+    if (player.playerId === this.hostOwnerPlayerId) {
+      this.ownerDisconnectedAt = null;
+    }
+    this.refreshHostAuthority();
     this.touch();
-    return player;
+    return wasOffline;
   }
 
-  markDisconnected(playerId) {
+  markDisconnected(playerId, { skipGrace = false } = {}) {
     const player = this.players.get(playerId);
-    if (!player) {
-      return null;
-    }
+    if (!player) return null;
 
     player.connected = false;
     player.socketId = null;
-
-    this.refreshHostAuthority({ preserveTemporaryHost: false });
-
-    this.touch();
-    return player;
-  }
-
-  markTransferred(playerId) {
-    const player = this.players.get(playerId);
-    if (!player) {
-      return null;
+    if (playerId === this.hostOwnerPlayerId) {
+      this.ownerDisconnectedAt = skipGrace ? Date.now() - this.hostGraceMs : Date.now();
     }
-
-    player.connected = false;
-    player.socketId = null;
-    player.isHost = false;
-    player.isTemporaryHost = false;
-    player.hostAuthority = 'none';
+    this.refreshHostAuthority();
     this.touch();
     return player;
   }
 
-  toSessionSummary(playerId = null) {
-    const totalQuestions = this.questions.length;
-    const leaderboard = buildLeaderboard(this.players.values(), totalQuestions);
-    const currentPlayer = playerId ? this.players.get(playerId) : null;
+  removePlayer(playerId) {
+    this.players.delete(playerId);
+    if (this.temporaryHostPlayerId === playerId) {
+      this.temporaryHostPlayerId = null;
+    }
+    this.refreshHostAuthority();
+    this.touch();
+  }
 
+  getLeaderboard() {
+    return buildLeaderboard(this.players.values(), this.questions.length);
+  }
+
+  // Shared, room-wide state. Contains no answers and no tokens.
+  toSummary() {
+    const hostPlayer = this.getHostPlayer();
     return {
       sessionId: this.id,
       topic: this.topic,
@@ -250,33 +231,26 @@ class GameSession {
       questionTimeLimitMs: this.questionTimeLimitMs,
       revealTiming: this.revealTiming,
       questionSource: this.questionSource,
-      playerCount: this.players.size,
-      connectedPlayerCount: this.getConnectedPlayers().length,
+      isDemo: this.isDemo,
+      demoId: this.demoId,
+      reviewMode: this.reviewMode,
+      hostReviewed: this.hostReviewed,
+      maxPlayers: this.maxPlayers,
       gameState: this.gameState,
       currentQuestionIndex: this.currentQuestionIndex,
       currentRoundId: this.currentRoundId,
-      currentQuestionEndsAt: this.currentQuestionEndsAt,
-      players: [...this.players.values()].map((player) => ({
-        playerId: player.playerId,
-        username: player.username,
-        score: player.score,
-        isHost: player.isHost,
-        isTemporaryHost: player.isTemporaryHost,
-        hostAuthority: player.hostAuthority,
-        connected: player.connected,
-      })),
-      leaderboard,
-      you: currentPlayer
-        ? {
-            playerId: currentPlayer.playerId,
-            username: currentPlayer.username,
-            score: currentPlayer.score,
-            isHost: currentPlayer.isHost,
-            isTemporaryHost: currentPlayer.isTemporaryHost,
-            hostAuthority: currentPlayer.hostAuthority,
-            connected: currentPlayer.connected,
-          }
-        : null,
+      hostStatus: this.getHostStatus(),
+      hostPlayerId: hostPlayer?.playerId || null,
+      connectedPlayerCount: this.getConnectedPlayers().length,
+      players: [...this.players.values()]
+        .sort((left, right) => left.joinedAt - right.joinedAt)
+        .map((player) => ({
+          playerId: player.playerId,
+          username: player.username,
+          score: player.score,
+          connected: player.connected,
+          role: this.getRole(player),
+        })),
     };
   }
 }
@@ -292,11 +266,7 @@ class SessionStore {
   }
 
   log(eventName, details = {}) {
-    if (typeof this.logger !== 'function') {
-      return;
-    }
-
-    this.logger(eventName, details);
+    this.logger?.(eventName, details);
   }
 
   getStoreMode() {
@@ -307,146 +277,64 @@ class SessionStore {
     return this.socketIndex.size;
   }
 
-  getKnownSessionIds() {
-    return [...this.sessions.keys()];
-  }
-
-  getStateCounts() {
-    return [...this.sessions.values()].reduce((counts, session) => {
-      counts[session.gameState] = (counts[session.gameState] || 0) + 1;
-      return counts;
-    }, {});
-  }
-
   getHealthSnapshot() {
+    let totalPlayers = 0;
+    let connectedPlayers = 0;
+    const sessionsByState = {};
+    for (const session of this.sessions.values()) {
+      sessionsByState[session.gameState] = (sessionsByState[session.gameState] || 0) + 1;
+      totalPlayers += session.players.size;
+      connectedPlayers += session.getConnectedPlayers().length;
+    }
     return {
       storeMode: this.storeMode,
       activeSessions: this.sessions.size,
       socketIndexSize: this.socketIndex.size,
-      sessionsByState: this.getStateCounts(),
-      totalPlayers: [...this.sessions.values()].reduce((total, session) => total + session.players.size, 0),
-      connectedPlayers: [...this.sessions.values()].reduce(
-        (total, session) => total + session.getConnectedPlayers().length,
-        0
-      ),
+      sessionsByState,
+      totalPlayers,
+      connectedPlayers,
     };
   }
 
   getSessionDiagnostics() {
     return [...this.sessions.values()].map((session) => ({
       sessionId: session.id,
-      topic: session.topic,
       gameState: session.gameState,
+      isDemo: session.isDemo,
       questionCount: session.questions.length,
       currentQuestionIndex: session.currentQuestionIndex,
-      currentRoundId: session.currentRoundId,
-      questionTimeLimitMs: session.questionTimeLimitMs,
-      revealTiming: session.revealTiming,
       playerCount: session.players.size,
       connectedPlayerCount: session.getConnectedPlayers().length,
+      hostStatus: session.getHostStatus(),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
-      endedAt: session.endedAt,
     }));
   }
 
   auditIntegrity() {
     const issues = [];
-
     for (const [socketId, indexed] of this.socketIndex.entries()) {
       const session = this.sessions.get(indexed.sessionId);
-      if (!session) {
-        issues.push({
-          type: 'missing_session',
-          socketId,
-          sessionId: indexed.sessionId,
-          playerId: indexed.playerId,
-        });
-        continue;
-      }
-
-      const player = session.players.get(indexed.playerId);
-      if (!player) {
-        issues.push({
-          type: 'missing_player',
-          socketId,
-          sessionId: indexed.sessionId,
-          playerId: indexed.playerId,
-        });
-        continue;
-      }
-
-      if (player.socketId !== socketId) {
-        issues.push({
-          type: 'stale_socket_binding',
-          socketId,
-          sessionId: indexed.sessionId,
-          playerId: indexed.playerId,
-          playerSocketId: player.socketId,
-        });
-      }
+      const player = session?.players.get(indexed.playerId);
+      if (!session) issues.push({ type: 'missing_session', socketId });
+      else if (!player) issues.push({ type: 'missing_player', socketId });
+      else if (player.socketId !== socketId) issues.push({ type: 'stale_socket_binding', socketId });
     }
-
     return issues;
   }
 
-  pruneSocketIndex({ sessionId = null, dropSessionEntries = false, reason = 'manual' } = {}) {
-    const removed = [];
-
-    for (const [socketId, indexed] of this.socketIndex.entries()) {
-      const session = this.sessions.get(indexed.sessionId);
-      const player = session?.players.get(indexed.playerId) || null;
-      const shouldRemove =
-        (dropSessionEntries && sessionId && indexed.sessionId === sessionId) ||
-        !session ||
-        !player ||
-        player.socketId !== socketId;
-
-      if (shouldRemove) {
-        this.socketIndex.delete(socketId);
-        removed.push({
-          socketId,
-          sessionId: indexed.sessionId,
-          playerId: indexed.playerId,
-        });
-      }
-    }
-
-    if (removed.length > 0) {
-      this.log('socket_index_pruned', {
-        reason,
-        removed,
-        socketIndexSize: this.socketIndex.size,
-      });
-    }
-
-    return removed;
-  }
-
-  createSession({ topic, language, questions, questionSource, questionTimeLimitMs, revealTiming }) {
+  createSession(options) {
     let sessionId = generateSessionId();
-
     while (this.sessions.has(sessionId)) {
       sessionId = generateSessionId();
     }
 
-    const session = new GameSession({
-      id: sessionId,
-      topic,
-      language,
-      questions,
-      questionSource,
-      questionTimeLimitMs,
-      revealTiming,
-    });
-
+    const session = new GameSession({ id: sessionId, ...options });
     this.sessions.set(sessionId, session);
     this.log('session_created', {
-      sessionId: session.id,
-      topic: session.topic,
-      questionCount: session.questions.length,
-      questionTimeLimitMs: session.questionTimeLimitMs,
-      revealTiming: session.revealTiming,
+      sessionId,
+      isDemo: session.isDemo,
+      source: session.questionSource,
       activeSessions: this.sessions.size,
     });
     return session;
@@ -457,17 +345,23 @@ class SessionStore {
   }
 
   bindSocket({ sessionId, playerId, socketId }) {
-    this.pruneSocketIndex({ sessionId, reason: 'bind_socket' });
-    this.socketIndex.set(socketId, { sessionId, playerId });
-    const session = this.getSession(sessionId);
-    if (!session) {
-      return;
+    const previous = this.socketIndex.get(socketId);
+    if (previous && (previous.sessionId !== sessionId || previous.playerId !== playerId)) {
+      // The socket switched seats: the old seat is no longer connected through it.
+      const oldPlayer = this.getSession(previous.sessionId)?.players.get(previous.playerId);
+      if (oldPlayer?.socketId === socketId) {
+        oldPlayer.socketId = null;
+        oldPlayer.connected = false;
+      }
     }
 
-    const player = session.players.get(playerId);
+    const session = this.getSession(sessionId);
+    const player = session?.players.get(playerId);
     if (player?.socketId && player.socketId !== socketId) {
+      // Same seat opened in a new tab/socket: the newest one wins.
       this.socketIndex.delete(player.socketId);
     }
+    this.socketIndex.set(socketId, { sessionId, playerId });
     if (player) {
       player.socketId = socketId;
       player.connected = true;
@@ -476,64 +370,54 @@ class SessionStore {
 
   getBySocketId(socketId) {
     const indexed = this.socketIndex.get(socketId);
-    if (!indexed) {
-      return { session: null, player: null };
-    }
-
-    const session = this.getSession(indexed.sessionId);
+    const session = indexed ? this.getSession(indexed.sessionId) : null;
     const player = session?.players.get(indexed.playerId) || null;
+    if (player && player.socketId !== socketId) {
+      return { session, player: null };
+    }
     return { session, player };
   }
 
   unbindSocket(socketId) {
-    const indexed = this.socketIndex.get(socketId);
+    const result = this.getBySocketId(socketId);
     this.socketIndex.delete(socketId);
-    if (!indexed) {
-      return { session: null, player: null };
-    }
-
-    const session = this.getSession(indexed.sessionId);
-    const player = session?.players.get(indexed.playerId) || null;
-    this.pruneSocketIndex({ reason: 'unbind_socket' });
-    return { session, player };
+    return result;
   }
 
   deleteSession(sessionId, { reason = 'manual' } = {}) {
     const session = this.sessions.get(sessionId);
-    if (!session) {
-      return;
-    }
+    if (!session) return;
 
-    session.clearTimer();
-    this.pruneSocketIndex({ sessionId, dropSessionEntries: true, reason: `delete_session:${reason}` });
+    session.clearAllTimers();
+    for (const [socketId, indexed] of this.socketIndex.entries()) {
+      if (indexed.sessionId === sessionId) {
+        this.socketIndex.delete(socketId);
+      }
+    }
     this.sessions.delete(sessionId);
-    this.log('session_deleted', {
-      sessionId,
-      reason,
-      activeSessions: this.sessions.size,
-    });
+    this.log('session_deleted', { sessionId, reason, activeSessions: this.sessions.size });
   }
 
-  reapExpiredSessions() {
-    const now = Date.now();
-    this.pruneSocketIndex({ reason: 'reap_expired_sessions' });
-
+  reapExpiredSessions(now = Date.now()) {
     for (const [sessionId, session] of this.sessions.entries()) {
       const idleFor = now - session.updatedAt;
       const hasConnectedPlayers = session.getConnectedPlayers().length > 0;
+      const retention = session.isDemo ? Math.min(this.sessionRetentionMs, 15 * 60_000) : this.sessionRetentionMs;
 
       if (session.gameState === 'ended' && idleFor > this.endedSessionRetentionMs) {
         this.deleteSession(sessionId, { reason: 'ended_retention_expired' });
-        continue;
-      }
-
-      if (!hasConnectedPlayers && idleFor > this.sessionRetentionMs) {
+      } else if (!hasConnectedPlayers && idleFor > retention) {
         this.deleteSession(sessionId, { reason: 'inactive_retention_expired' });
+      } else if (now - session.createdAt > 6 * 60 * 60_000) {
+        // Hard cap: nobody plays a 10-question quiz for six hours.
+        this.deleteSession(sessionId, { reason: 'max_age' });
       }
     }
   }
 }
 
 module.exports = {
+  GameSession,
   SessionStore,
+  generateSessionId,
 };
