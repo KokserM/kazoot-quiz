@@ -466,6 +466,21 @@ class AiUsageService {
     return data || 0;
   }
 
+  async applyRetention() {
+    if (!this.client) {
+      const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      this.memory.generations.forEach((generation) => {
+        if (generation.createdAt < cutoff) generation.ipAddress = null;
+      });
+      return {};
+    }
+    const { data, error } = await this.client.rpc('kz_apply_retention', {});
+    if (error) {
+      throw new Error(`Failed to apply retention: ${error.message}`);
+    }
+    return data;
+  }
+
   // --------------------------------------------------------------- granting
 
   async grantCredits({ userId, credits, reason, sourceId, metadata = {}, grantType = 'manual', expiresAt = null }) {

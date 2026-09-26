@@ -217,3 +217,25 @@ test('grants are idempotent per source and revocation removes only unused credit
   assert.equal(again.n, 0);
   assert.equal(await remaining(db, user), 0);
 });
+
+test('retention clears IP addresses after 30 days and topics after 12 months', async () => {
+  const { db, createUser } = await createSupabaseTestDb();
+  const user = randomUUID();
+  await createUser(user);
+  await db.query(
+    `insert into quiz_generations (user_id, ip_address, topic, language, model, source, status, created_at) values
+      ($1, '1.1.1.1', 'Recent topic', 'English', 'm', 'openai', 'succeeded', now() - interval '1 day'),
+      ($1, '2.2.2.2', 'Old-ish topic', 'English', 'm', 'openai', 'succeeded', now() - interval '40 days'),
+      ($1, '3.3.3.3', 'Ancient topic', 'English', 'm', 'openai', 'succeeded', now() - interval '13 months')`,
+    [user]
+  );
+  await db.query(`insert into product_events (name, created_at) values ('landing_view', now() - interval '14 months'), ('landing_view', now())`);
+  const { rows: [{ result }] } = await db.query('select public.kz_apply_retention() as result');
+  assert.deepEqual(result, { ipsCleared: 2, topicsRemoved: 1, eventsDeleted: 1 });
+  const { rows } = await db.query('select ip_address, topic from quiz_generations order by created_at desc');
+  assert.deepEqual(rows, [
+    { ip_address: '1.1.1.1', topic: 'Recent topic' },
+    { ip_address: null, topic: 'Old-ish topic' },
+    { ip_address: null, topic: '[removed]' },
+  ]);
+});

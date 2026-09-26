@@ -4,7 +4,7 @@ const HOST_PREFERENCES_USER_PREFIX = 'kazoot:hostPreferences:user:';
 
 export const HOST_PREFERENCE_OPTIONS = {
   languages: ['English', 'Estonian'],
-  questionTimeLimitMs: ['5000', '10000', '15000', '20000'],
+  questionTimeLimitMs: ['5000', '10000', '15000', '20000', '30000'],
   revealTiming: ['timer', 'all_answered'],
 };
 

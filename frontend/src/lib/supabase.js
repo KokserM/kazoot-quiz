@@ -1,13 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
-
+// The Supabase client (~45 kB gzipped) is loaded after first paint, so the
+// landing page doesn't wait for it.
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+let clientPromise = null;
+
+export function getSupabase() {
+  if (!isSupabaseConfigured) {
+    return Promise.resolve(null);
+  }
+  clientPromise =
+    clientPromise ||
+    import('@supabase/supabase-js').then(({ createClient }) => createClient(supabaseUrl, supabaseAnonKey));
+  return clientPromise;
+}
 
 export function getOAuthRedirectTo({ origin = window.location.origin, pathname = window.location.pathname } = {}) {
   const returnPath = pathname && pathname !== '/' ? pathname : '/account';
@@ -15,26 +23,20 @@ export function getOAuthRedirectTo({ origin = window.location.origin, pathname =
 }
 
 export async function signInWithGoogle() {
+  const supabase = await getSupabase();
   if (!supabase) {
-    throw new Error('Google login is not configured yet.');
+    throw new Error('Sign-in is not configured.');
   }
-
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: {
-      redirectTo: getOAuthRedirectTo(),
-    },
+    options: { redirectTo: getOAuthRedirectTo() },
   });
-
   if (error) {
     throw error;
   }
 }
 
 export async function signOut() {
-  if (!supabase) {
-    return;
-  }
-
-  await supabase.auth.signOut();
+  const supabase = await getSupabase();
+  await supabase?.auth.signOut();
 }

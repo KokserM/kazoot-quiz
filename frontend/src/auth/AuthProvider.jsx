@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { fetchUsage } from '../lib/api';
-import { isSupabaseConfigured, signInWithGoogle, signOut, supabase } from '../lib/supabase';
+import { getSupabase, isSupabaseConfigured, signInWithGoogle, signOut } from '../lib/supabase';
 
 const AuthContext = createContext(null);
 
@@ -62,94 +62,109 @@ export function AuthProvider({ children }) {
   const user = session?.user || null;
 
   useEffect(() => {
-    if (!supabase) {
+    if (!isSupabaseConfigured) {
       return undefined;
     }
 
     let isMounted = true;
     let hasAuthoritativeAuthEvent = false;
+    let subscription = null;
 
-    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      if (!isMounted) {
+    getSupabase().then((supabase) => {
+      if (!isMounted || !supabase) {
         return;
       }
 
-      hasAuthoritativeAuthEvent =
-        hasAuthoritativeAuthEvent || isAuthoritativeAuthEvent(event, nextSession);
-      dispatchAuthState({ type: 'auth-event', event, session: nextSession || null });
-    });
-
-    supabase.auth
-      .getSession()
-      .then(({ data: sessionData }) => {
-        if (!isMounted || hasAuthoritativeAuthEvent) {
+      const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
+        if (!isMounted) {
           return;
         }
-
-        dispatchAuthState({ type: 'initial-session', session: sessionData.session || null });
-      })
-      .catch(() => {
-        if (!isMounted || hasAuthoritativeAuthEvent) {
-          return;
-        }
-
-        dispatchAuthState({ type: 'initial-session', session: null });
+        hasAuthoritativeAuthEvent = hasAuthoritativeAuthEvent || isAuthoritativeAuthEvent(event, nextSession);
+        dispatchAuthState({ type: 'auth-event', event, session: nextSession || null });
       });
+      subscription = data.subscription;
+
+      supabase.auth
+        .getSession()
+        .then(({ data: sessionData }) => {
+          if (isMounted && !hasAuthoritativeAuthEvent) {
+            dispatchAuthState({ type: 'initial-session', session: sessionData.session || null });
+          }
+        })
+        .catch(() => {
+          if (isMounted && !hasAuthoritativeAuthEvent) {
+            dispatchAuthState({ type: 'initial-session', session: null });
+          }
+        });
+    }, () => {
+      if (isMounted) dispatchAuthState({ type: 'initial-session', session: null });
+    });
 
     return () => {
       isMounted = false;
-      data.subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
+  }, []);
+
+  const tokenRef = useRef(accessToken);
+  tokenRef.current = accessToken;
+
+  // Stable identity so effects that poll usage don't restart on every render.
+  const refreshUsage = useCallback(async () => {
+    const token = tokenRef.current;
+    if (!token) {
+      setUsage(null);
+      return null;
+    }
+    const payload = await fetchUsage(token);
+    if (tokenRef.current === token) {
+      setUsage(payload.usage);
+    }
+    return payload.usage;
   }, []);
 
   useEffect(() => {
     if (isAuthLoading) {
       return;
     }
-
     if (!accessToken) {
       setUsage(null);
       return;
     }
+    refreshUsage().catch(() => setUsage(null));
+  }, [accessToken, isAuthLoading, refreshUsage]);
 
-    fetchUsage(accessToken)
-      .then((payload) => setUsage(payload.usage))
-      .catch(() => setUsage(null));
-  }, [accessToken]);
+  const signIn = useCallback(async () => {
+    setAuthError('');
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      setAuthError(error.message || 'Sign-in failed. Please try again.');
+    }
+  }, []);
+
+  const doSignOut = useCallback(async () => {
+    setUsage(null);
+    setAuthError('');
+    await signOut();
+  }, []);
+
+  const clearAuthError = useCallback(() => setAuthError(''), []);
 
   const value = useMemo(
     () => ({
       accessToken,
       authError,
-      clearAuthError: () => setAuthError(''),
+      clearAuthError,
       isConfigured: isSupabaseConfigured,
       isAuthLoading,
-      refreshUsage: async () => {
-        if (!accessToken) {
-          setUsage(null);
-          return null;
-        }
-        const payload = await fetchUsage(accessToken);
-        setUsage(payload.usage);
-        return payload.usage;
-      },
-      signIn: async () => {
-        setAuthError('');
-        try {
-          await signInWithGoogle();
-        } catch (error) {
-          setAuthError(error.message);
-        }
-      },
-      signOut: async () => {
-        setUsage(null);
-        setAuthError('');
-        await signOut();
-      },
+      refreshUsage,
+      signIn,
+      signOut: doSignOut,
       usage,
       user,
     }),
-    [accessToken, authError, isAuthLoading, usage, user]
+    [accessToken, authError, clearAuthError, doSignOut, isAuthLoading, refreshUsage, signIn, usage, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

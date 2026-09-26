@@ -558,9 +558,11 @@ class GameService {
     }
   }
 
+  // Announces a change of who controls the game (not the owner's first arrival).
   announceHostChange(session, hostBefore) {
     const host = session.getHostPlayer();
-    if (host && host.playerId !== hostBefore) {
+    const firstArrival = !hostBefore && session.getRole(host) === 'owner' && !session.startedAt;
+    if (host && host.playerId !== hostBefore && !firstArrival) {
       this.io.to(session.id).emit('host-changed', {
         playerId: host.playerId,
         username: host.username,

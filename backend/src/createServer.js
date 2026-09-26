@@ -86,6 +86,16 @@ function createServer(overrides = {}) {
   }, 5 * 60_000);
   sweeper.unref();
 
+  // Privacy-notice retention (IPs 30 days, topics 12 months). Daily is plenty.
+  const runRetention = () =>
+    aiUsageService
+      .applyRetention()
+      .then((result) => logger.info('retention_applied', result || {}))
+      .catch((error) => logger.error('retention_failed', { message: error.message }));
+  const retention = setInterval(runRetention, 24 * 60 * 60_000);
+  retention.unref();
+  if (config.nodeEnv === 'production') setTimeout(runRetention, 60_000).unref();
+
   if (config.nodeEnv !== 'test') {
     metrics.start();
   }
@@ -100,6 +110,7 @@ function createServer(overrides = {}) {
     shuttingDown = (async () => {
       clearInterval(maintenance);
       clearInterval(sweeper);
+      clearInterval(retention);
       metrics.stop();
       await metrics.flush();
       // Give the restart notice a moment to reach clients.

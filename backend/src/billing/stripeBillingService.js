@@ -11,6 +11,9 @@ const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due'])
 const BLOCKING_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due', 'incomplete', 'unpaid']);
 const GRANTING_BILLING_REASONS = new Set(['subscription_create', 'subscription_cycle']);
 
+const WITHDRAWAL_CONFIRMATION_TEXT =
+  'You asked for your AI games to be added immediately and acknowledged that you lose your 14-day right of withdrawal once they are added.';
+
 const HANDLED_EVENT_TYPES = [
   'checkout.session.completed',
   'checkout.session.async_payment_succeeded',
@@ -167,7 +170,21 @@ class StripeBillingService {
       metadata,
       ...(plan.mode === 'subscription'
         ? { subscription_data: { metadata } }
-        : { payment_intent_data: { metadata } }),
+        : {
+            payment_intent_data: { metadata },
+            // EU withdrawal-right waiver must be confirmed on a durable medium
+            // (Directive 2011/83/EU Art. 8(7) and 16(m)). An emailed invoice with
+            // this footer does that for one-time packs. Stripe charges a small
+            // per-invoice fee, so it is opt-in.
+            ...(this.config.stripePackInvoices
+              ? {
+                  invoice_creation: {
+                    enabled: true,
+                    invoice_data: { footer: WITHDRAWAL_CONFIRMATION_TEXT, metadata: { userId: user.id, planId } },
+                  },
+                }
+              : {}),
+          }),
       custom_text: {
         submit: {
           message:

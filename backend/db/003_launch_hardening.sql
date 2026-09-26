@@ -305,6 +305,34 @@ begin
 end;
 $$;
 
+-- Data retention promised in the privacy notice. Returns rows touched.
+create or replace function public.kz_apply_retention()
+returns jsonb
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_ips integer;
+  v_topics integer;
+  v_events integer;
+begin
+  update public.quiz_generations set ip_address = null
+  where ip_address is not null and created_at < now() - interval '30 days';
+  get diagnostics v_ips = row_count;
+
+  update public.quiz_generations set topic = '[removed]', error = null
+  where topic <> '[removed]' and created_at < now() - interval '12 months';
+  get diagnostics v_topics = row_count;
+
+  delete from public.product_events where created_at < now() - interval '13 months';
+  get diagnostics v_events = row_count;
+
+  delete from public.quiz_cache where expires_at < now();
+
+  return jsonb_build_object('ipsCleared', v_ips, 'topicsRemoved', v_topics, 'eventsDeleted', v_events);
+end;
+$$;
+
 -- Only the backend (service role) may call these. Postgres grants EXECUTE to PUBLIC
 -- by default, which would expose them through the Supabase REST API.
 do $$
@@ -317,7 +345,8 @@ begin
     'public.kz_release_generation(uuid, text, integer, integer, numeric)',
     'public.kz_release_stale_generations(integer)',
     'public.kz_grant_credits(uuid, text, text, integer, timestamptz, text, jsonb)',
-    'public.kz_revoke_grant(text, integer, text)'
+    'public.kz_revoke_grant(text, integer, text)',
+    'public.kz_apply_retention()'
   ] loop
     execute format('revoke all on function %s from public', fn);
     if exists (select 1 from pg_roles where rolname = 'anon') then

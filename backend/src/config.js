@@ -217,6 +217,7 @@ const config = {
   openAiReasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'none',
   shutdownGraceMs: toNumber(process.env.SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS),
   billingVisiblePlans: process.env.BILLING_VISIBLE_PLANS || '',
+  stripePackInvoices: process.env.STRIPE_PACK_INVOICES === 'true',
   storeMode: 'single-instance-memory',
   railway: {
     projectId: process.env.RAILWAY_PROJECT_ID || '',
