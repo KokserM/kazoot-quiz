@@ -2,69 +2,84 @@ export function getBackendUrl() {
   if (import.meta.env.VITE_BACKEND_URL) {
     return import.meta.env.VITE_BACKEND_URL;
   }
-
   if (import.meta.env.PROD) {
     return window.location.origin;
   }
-
   return 'http://localhost:5000';
 }
 
 const API_BASE = getBackendUrl();
 
-async function request(path, options = {}) {
-  const { accessToken, ...fetchOptions } = options;
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(fetchOptions.headers || {}),
-    },
-    ...fetchOptions,
-  });
+export class ApiError extends Error {
+  constructor(message, { status = 0, code = 'network_error' } = {}) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+async function request(path, { accessToken, hostToken, body, method = body === undefined ? 'GET' : 'POST', timeoutMs = 20_000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method,
+      signal: controller.signal,
+      headers: {
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(hostToken ? { 'X-Host-Token': hostToken } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (error) {
+    throw new ApiError(
+      error.name === 'AbortError'
+        ? 'The request took too long. Check your connection and try again.'
+        : 'Couldn’t reach Kazoot. Check your connection and try again.',
+      { code: error.name === 'AbortError' ? 'timeout' : 'network_error' }
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Request failed');
+    throw new ApiError(data.error || 'Something went wrong. Please try again.', { status: response.status, code: data.code });
   }
-
   return data;
 }
 
-export function createSession(payload, accessToken = null) {
-  return request('/api/create-session', {
-    method: 'POST',
-    accessToken,
-    body: JSON.stringify(payload),
-  });
-}
+export const fetchConfig = () => request('/api/config');
+export const fetchUsage = (accessToken) => request('/api/me/usage', { accessToken });
+export const fetchBillingCatalog = () => request('/api/billing/catalog');
 
-export function createNextSession(sourceSessionId, payload, accessToken = null) {
-  return request(`/api/sessions/${sourceSessionId}/next`, {
-    method: 'POST',
-    accessToken,
-    body: JSON.stringify(payload),
-  });
-}
+// AI generation can take a while; allow up to two minutes.
+export const createSession = (payload, accessToken = null) =>
+  request('/api/create-session', { body: payload, accessToken, timeoutMs: payload.demoId ? 20_000 : 120_000 });
 
-export function fetchDemoTopics() {
-  return request('/api/demo-topics');
-}
+export const createNextSession = (sourceSessionId, payload, accessToken = null) =>
+  request(`/api/sessions/${encodeURIComponent(sourceSessionId)}/next`, { body: payload, accessToken, timeoutMs: payload.demoId ? 20_000 : 120_000 });
 
-export function fetchUsage(accessToken) {
-  return request('/api/me/usage', {
-    accessToken,
-  });
-}
+export const fetchReviewQuestions = (sessionId, hostToken) => request(`/api/sessions/${encodeURIComponent(sessionId)}/review`, { hostToken });
+export const saveReviewQuestions = (sessionId, hostToken, questions) =>
+  request(`/api/sessions/${encodeURIComponent(sessionId)}/review`, { method: 'PUT', hostToken, body: { questions } });
 
-export function fetchBillingCatalog() {
-  return request('/api/billing/catalog');
-}
+export const createCheckoutSession = (planId, accessToken) =>
+  request('/api/billing/checkout', { accessToken, body: { planId, acceptedImmediateSupply: true } });
+export const createPortalSession = (accessToken) => request('/api/billing/portal', { accessToken, body: {} });
+export const deleteAccount = (accessToken) => request('/api/me', { method: 'DELETE', accessToken });
 
-export function createCheckoutSession(planId, accessToken) {
-  return request('/api/billing/create-checkout-session', {
-    method: 'POST',
-    accessToken,
-    body: JSON.stringify({ planId }),
-  });
+export function postBeacon(path, payload) {
+  try {
+    const body = JSON.stringify(payload);
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(`${API_BASE}${path}`, new Blob([body], { type: 'application/json' }));
+      return;
+    }
+    fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+  } catch {
+    // Metrics must never break the app.
+  }
 }

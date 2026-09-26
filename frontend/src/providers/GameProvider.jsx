@@ -1,604 +1,376 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { io } from 'socket.io-client';
 import { getBackendUrl } from '../lib/api';
 import { clearPlayerSession, loadPlayerSession, markPlayerSessionEnded, savePlayerSession } from '../lib/storage';
 
 const GameContext = createContext(null);
+const ACK_TIMEOUT_MS = 6000;
 
-export function getSocketTransports() {
-  return ['polling', 'websocket'];
-}
+// Errors after which retrying the same room makes no sense.
+const FATAL_JOIN_CODES = new Set(['room_not_found', 'game_ended', 'room_full', 'invalid_input']);
 
-export function buildJoinGamePayload({ sessionId, username, isCreator = false, hostToken = null, saved = null }) {
-  const payload = {
-    sessionId,
-    username,
-    isCreator,
-  };
+export const INITIAL_GAME_STATE = {
+  seat: null, // { sessionId, playerId, playerToken, hostToken, username }
+  session: null, // room-wide summary from the server
+  question: null,
+  myAnswer: null, // { roundId, index, status: 'sending' | 'locked' | 'failed', message }
+  progress: null, // { roundId, answeredCount, connectedCount }
+  results: null,
+  roundResult: null,
+  leaderboard: null,
+};
 
-  if (typeof saved?.playerToken === 'string' && saved.playerToken.length > 0) {
-    payload.playerToken = saved.playerToken;
-  }
-
-  const resolvedHostToken = typeof hostToken === 'string' && hostToken.length > 0 ? hostToken : saved?.hostToken;
-  if (typeof resolvedHostToken === 'string' && resolvedHostToken.length > 0) {
-    payload.hostToken = resolvedHostToken;
-  }
-
+export function buildJoinPayload({ sessionId, username, hostToken = null, saved = null }) {
+  const payload = { sessionId, username };
+  if (saved?.playerToken) payload.playerToken = saved.playerToken;
+  const token = hostToken || saved?.hostToken;
+  if (token) payload.hostToken = token;
   return payload;
 }
 
-export function persistNextGameSession(payload) {
-  savePlayerSession(payload.sessionId, {
-    playerToken: payload.playerToken,
-    hostToken: payload.hostToken,
-    playerId: payload.playerId,
-    username: payload.you?.username || payload.username,
-  });
-  if (payload.previousSessionId) {
-    markPlayerSessionEnded(payload.previousSessionId);
-  }
-}
-
-function logSocketEvent(eventName, details = {}) {
-  if (!import.meta.env.PROD) {
-    return;
-  }
-
-  console.log(`[socket:${eventName}]`, details);
-}
-
-function normalizeQuestionPayload(payload) {
-  if (!payload) {
-    return null;
-  }
-
-  const normalizedPayload = {
-    ...payload,
+// Applies a full server snapshot: used on join, reconnect and resync.
+export function applySnapshot(state, snapshot, now = Date.now()) {
+  const next = {
+    ...state,
+    session: snapshot.session,
+    question: null,
+    progress: null,
+    results: null,
+    roundResult: null,
+    leaderboard: null,
   };
-
-  return {
-    ...normalizedPayload,
-    clientReceivedAt:
-      typeof normalizedPayload.clientReceivedAt === 'number'
-        ? normalizedPayload.clientReceivedAt
-        : Date.now(),
-    submittedAnswerIndex:
-      typeof normalizedPayload.submittedAnswerIndex === 'number'
-        ? normalizedPayload.submittedAnswerIndex
-        : null,
-    pendingAnswerIndex:
-      typeof normalizedPayload.pendingAnswerIndex === 'number'
-        ? normalizedPayload.pendingAnswerIndex
-        : null,
-  };
+  if (snapshot.phase === 'question' && snapshot.question) {
+    next.question = { ...snapshot.question, clientReceivedAt: now };
+    next.progress = { roundId: snapshot.question.roundId, answeredCount: snapshot.answeredCount || 0 };
+    const keep = state.myAnswer?.roundId === snapshot.question.roundId ? state.myAnswer : null;
+    next.myAnswer =
+      typeof snapshot.yourAnswerIndex === 'number'
+        ? { roundId: snapshot.question.roundId, index: snapshot.yourAnswerIndex, status: 'locked' }
+        : keep && keep.status !== 'locked'
+          ? keep
+          : null;
+  } else if (snapshot.phase === 'results') {
+    next.results = snapshot.results;
+    next.roundResult = snapshot.roundResult;
+    next.myAnswer = null;
+  } else if (snapshot.phase === 'ended') {
+    next.leaderboard = snapshot.leaderboard;
+    next.myAnswer = null;
+  }
+  return next;
 }
 
 export function GameProvider({ children }) {
   const socketRef = useRef(null);
-  const questionRef = useRef(null);
-  const sessionRef = useRef(null);
-  const connectionStatusRef = useRef('disconnected');
-  const notificationTimerRef = useRef(null);
-  const joinIntentRef = useRef(null);
-  const awaitingJoinRef = useRef(false);
-  const [session, setSession] = useState(null);
-  const [question, setQuestion] = useState(null);
-  const [results, setResults] = useState(null);
-  const [gameEnd, setGameEnd] = useState(null);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const socketPromiseRef = useRef(null);
+  const stateRef = useRef(INITIAL_GAME_STATE);
+  const joinIntentRef = useRef(null); // { sessionId, username, hostToken }
+  const [state, setStateRaw] = useState(INITIAL_GAME_STATE);
+  const [connection, setConnection] = useState('idle'); // idle | connecting | connected | reconnecting | offline
+  const [joinError, setJoinError] = useState(null); // { code, message, fatal }
+  const [restarting, setRestarting] = useState(null);
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
 
-  useEffect(() => {
-    questionRef.current = question;
-  }, [question]);
-
-  useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
-
-  useEffect(() => {
-    connectionStatusRef.current = connectionStatus;
-  }, [connectionStatus]);
-
-  const showNotice = useCallback((message, { tone = 'info' } = {}) => {
-    if (!message) {
-      return;
-    }
-
-    if (notificationTimerRef.current) {
-      clearTimeout(notificationTimerRef.current);
-    }
-
-    setNotice({
-      id: Date.now(),
-      message,
-      tone,
+  const setState = useCallback((updater) => {
+    setStateRaw((previous) => {
+      const next = typeof updater === 'function' ? updater(previous) : updater;
+      stateRef.current = next;
+      return next;
     });
-    notificationTimerRef.current = setTimeout(() => {
-      setNotice(null);
-    }, 2800);
   }, []);
 
-  const emitJoinGame = useCallback((socket, { sessionId, username, isCreator = false, hostToken = null, forceFresh = false }) => {
-    if (!sessionId || !username) {
-      return;
-    }
-
-    const saved = forceFresh ? null : loadPlayerSession(sessionId, { username });
-    awaitingJoinRef.current = true;
-    joinIntentRef.current = {
-      sessionId,
-      username,
-      isCreator,
-      hostToken,
-      forceFresh,
-    };
-
-    socket.emit('join-game', buildJoinGamePayload({
-      sessionId,
-      username,
-      isCreator,
-      hostToken,
-      saved,
-    }));
+  const showToast = useCallback((message) => {
+    clearTimeout(toastTimer.current);
+    setToast({ id: Date.now(), message });
+    toastTimer.current = setTimeout(() => setToast(null), 3200);
   }, []);
 
-  useEffect(() => {
-    const socket = io(getBackendUrl(), {
-      autoConnect: false,
-      transports: getSocketTransports(),
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
-    });
-
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      setConnectionStatus('connected');
-      logSocketEvent('connect', {
-        socketId: socket.id,
-        recovered: socket.recovered,
-        transport: socket.io.engine.transport.name,
-      });
-
-      if (socket.recovered) {
-        awaitingJoinRef.current = false;
-        showNotice('Connection restored.');
-        return;
-      }
-
-      const activeSession = sessionRef.current;
-      if (activeSession && !awaitingJoinRef.current) {
-        emitJoinGame(socket, {
-          sessionId: activeSession.sessionId,
-          username: activeSession.you?.username,
-          isCreator: Boolean(activeSession.you?.isHost),
-          hostToken: activeSession.hostToken || null,
-        });
-      }
-    });
-
-    socket.on('disconnect', () => {
-      setConnectionStatus('disconnected');
-      logSocketEvent('disconnect', {
-        socketId: socket.id,
-        transport: socket.io.engine?.transport?.name,
-      });
-    });
-
-    socket.on('connect_error', (connectError) => {
-      awaitingJoinRef.current = false;
-      setConnectionStatus('disconnected');
-      logSocketEvent('connect_error', {
-        message: connectError?.message,
-        description: connectError?.description,
-        context: connectError?.context,
-      });
-    });
-
-    socket.on('joined-game', (payload) => {
-      awaitingJoinRef.current = false;
-      joinIntentRef.current = {
-        sessionId: payload.sessionId,
-        username: payload.you?.username || payload.username,
-        isCreator: Boolean(payload.you?.isHost),
-        hostToken: payload.hostToken || null,
-        forceFresh: false,
-      };
-      setSession(payload);
-      setQuestion(null);
-      setResults(null);
-      setGameEnd(null);
-      savePlayerSession(payload.sessionId, {
-        playerToken: payload.playerToken,
-        hostToken: payload.hostToken,
-        playerId: payload.playerId,
-        username: payload.you?.username || payload.username,
-      });
-
-      if (payload.reconnected) {
-        showNotice('Reconnected to the live session.');
-      }
-      logSocketEvent('joined_game', {
-        sessionId: payload.sessionId,
-        playerId: payload.playerId,
-        reconnected: payload.reconnected,
-        gameState: payload.gameState,
-      });
-    });
-
-    socket.on('next-game-ready', (payload) => {
-      awaitingJoinRef.current = false;
-      joinIntentRef.current = {
-        sessionId: payload.sessionId,
-        username: payload.you?.username || payload.username,
-        isCreator: Boolean(payload.you?.isHost),
-        hostToken: payload.hostToken || null,
-        forceFresh: false,
-      };
-      setSession(payload);
-      setQuestion(null);
-      setResults(null);
-      setGameEnd(null);
-      persistNextGameSession(payload);
-      showNotice(payload.reconnected ? 'Moved to the next game.' : 'The next game is ready.');
-      logSocketEvent('next_game_ready', {
-        previousSessionId: payload.previousSessionId,
-        sessionId: payload.sessionId,
-        playerId: payload.playerId,
-      });
-    });
-
-    socket.on('session-updated', (payload) => {
-      setSession((previous) => {
-        const nextSession = {
-          ...(previous || {}),
-          ...payload,
-          you: payload.you || previous?.you || null,
-          playerToken: previous?.playerToken,
-          hostToken: previous?.hostToken,
-          playerId: previous?.playerId,
-          isAdmin: payload.you?.isHost ?? previous?.isAdmin,
-        };
-
-        return nextSession;
-      });
-
-      if (payload.gameState === 'question' && payload.activePhaseData) {
-        setQuestion((previous) => {
-          if (previous?.roundId === payload.activePhaseData.roundId) {
-            return {
-              ...previous,
-              submittedAnswerIndex:
-                typeof payload.activePhaseData.submittedAnswerIndex === 'number'
-                  ? payload.activePhaseData.submittedAnswerIndex
-                  : previous.submittedAnswerIndex,
-            };
+  const emitJoin = useCallback(
+    async (socket) => {
+      const intent = joinIntentRef.current;
+      if (!intent) return;
+      // Only reuse a saved seat that belongs to the name being joined with: two tabs
+      // in one browser share storage, and a typed new name means a new player.
+      const saved = intent.fresh ? null : loadPlayerSession(intent.sessionId, { username: intent.username });
+      const payload = buildJoinPayload({ ...intent, saved });
+      try {
+        const ack = await socket.timeout(ACK_TIMEOUT_MS).emitWithAck('join-game', payload);
+        if (!ack.ok) {
+          const fatal = FATAL_JOIN_CODES.has(ack.code);
+          setJoinError({ code: ack.code, message: ack.message, fatal });
+          if (fatal && ack.code === 'room_not_found') {
+            clearPlayerSession(intent.sessionId);
           }
-
-          return normalizeQuestionPayload(payload.activePhaseData);
-        });
-        setResults(null);
-        setGameEnd(null);
-      }
-
-      if (payload.gameState === 'results' && payload.activePhaseData) {
-        setResults(payload.activePhaseData);
-        setQuestion(null);
-        setGameEnd(null);
-      }
-
-      if (payload.gameState === 'ended' && payload.activePhaseData) {
-        setGameEnd(payload.activePhaseData);
-        setQuestion(null);
-        setResults(null);
-      }
-    });
-
-    socket.on('question-start', (payload) => {
-      setQuestion(normalizeQuestionPayload(payload));
-      setResults(null);
-      setGameEnd(null);
-      logSocketEvent('question_start', {
-        roundId: payload.roundId,
-        questionNumber: payload.questionNumber,
-        endsAt: payload.questionEndsAt,
-      });
-    });
-
-    socket.on('question-results', (payload) => {
-      setResults(payload);
-      setQuestion(null);
-      logSocketEvent('question_results', {
-        roundId: payload.roundId,
-        correctAnswer: payload.correctAnswer,
-        answerStats: payload.answerStats,
-      });
-    });
-
-    socket.on('game-end', (payload) => {
-      const activeSessionId = sessionRef.current?.sessionId || joinIntentRef.current?.sessionId;
-      setGameEnd(payload);
-      setQuestion(null);
-      setResults(null);
-      if (activeSessionId) {
-        markPlayerSessionEnded(activeSessionId);
-      }
-      logSocketEvent('game_end', {
-        leaderboardSize: payload.leaderboard?.length,
-      });
-    });
-
-    socket.on('answer-submitted', (payload) => {
-      setQuestion((previous) => {
-        if (!previous) {
-          return previous;
+        } else {
+          setJoinError(null);
+          intent.fresh = false;
         }
-
-        return {
-          ...previous,
-          submittedAnswerIndex:
-            typeof previous.submittedAnswerIndex === 'number'
-              ? previous.submittedAnswerIndex
-              : payload.alreadySubmitted
-                ? previous.submittedAnswerIndex
-                : previous.pendingAnswerIndex,
-          pendingAnswerIndex: null,
-        };
-      });
-    });
-
-    socket.on('player-joined', ({ username }) => {
-      showNotice(`${username} joined the lobby.`);
-    });
-
-    socket.on('player-left', ({ username }) => {
-      if (username) {
-        showNotice(`${username} disconnected.`);
+      } catch {
+        // No acknowledgement: the socket will reconnect and we try again.
       }
-    });
-
-    socket.on('player-reconnected', ({ username }) => {
-      showNotice(`${username} reconnected.`);
-    });
-
-    socket.on('admin-changed', ({ newAdminId, newAdminUsername }) => {
-      setSession((previous) => {
-        if (!previous) {
-          return previous;
-        }
-
-        const isCurrentPlayer = previous.playerId === newAdminId;
-        return {
-          ...previous,
-          isAdmin: isCurrentPlayer,
-          you: previous.you
-            ? {
-                ...previous.you,
-                isHost: isCurrentPlayer,
-              }
-            : previous.you,
-        };
-      });
-
-      showNotice(`${newAdminUsername} is now the host.`);
-    });
-
-    socket.on('error', ({ message }) => {
-      awaitingJoinRef.current = false;
-      setQuestion((previous) => {
-        if (!previous) {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          pendingAnswerIndex: null,
-        };
-      });
-
-      const shouldTreatAsRecoverableMissingSession =
-        message === 'Game session not found' &&
-        Boolean(sessionRef.current?.sessionId) &&
-        joinIntentRef.current?.sessionId === sessionRef.current?.sessionId &&
-        connectionStatusRef.current !== 'connected';
-
-      if (shouldTreatAsRecoverableMissingSession) {
-        showNotice('Connection interrupted. Trying to restore the live room...');
-        logSocketEvent('socket_error_recoverable', {
-          message,
-          sessionId: sessionRef.current?.sessionId,
-        });
-        return;
-      }
-
-      setError(message || 'Something went wrong');
-      logSocketEvent('socket_error', {
-        message,
-      });
-    });
-
-    return () => {
-      if (notificationTimerRef.current) {
-        clearTimeout(notificationTimerRef.current);
-      }
-      socket.close();
-    };
-  }, [emitJoinGame, showNotice]);
-
-  const ensureSocket = useCallback(() => {
-    const socket = socketRef.current;
-    if (!socket) {
-      throw new Error('Socket not ready');
-    }
-
-    if (!socket.connected) {
-      setConnectionStatus('connecting');
-      socket.connect();
-    }
-
-    return socket;
-  }, []);
-
-  const joinSession = useCallback(
-    ({ sessionId, username, isCreator = false, hostToken = null, forceFresh = false }) => {
-      const socket = ensureSocket();
-      setError('');
-      emitJoinGame(socket, {
-        sessionId,
-        username,
-        isCreator,
-        hostToken,
-        forceFresh,
-      });
-    },
-    [emitJoinGame, ensureSocket]
-  );
-
-  const startGame = useCallback(() => {
-    ensureSocket().emit('start-game');
-  }, [ensureSocket]);
-
-  const submitAnswer = useCallback(
-    (answerIndex) => {
-      setQuestion((previous) => {
-        if (!previous || typeof previous.submittedAnswerIndex === 'number') {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          pendingAnswerIndex: answerIndex,
-        };
-      });
-
-      ensureSocket().emit('submit-answer', {
-        answerIndex,
-        roundId: questionRef.current?.roundId,
-      });
-    },
-    [ensureSocket]
-  );
-
-  const nextQuestion = useCallback(() => {
-    ensureSocket().emit('next-question');
-  }, [ensureSocket]);
-
-  const resyncSession = useCallback(() => {
-    const socket = ensureSocket();
-    const activeSession = sessionRef.current;
-    const joinIntent = joinIntentRef.current;
-
-    if (awaitingJoinRef.current) {
-      return;
-    }
-
-    emitJoinGame(socket, {
-      sessionId: activeSession?.sessionId || joinIntent?.sessionId,
-      username: activeSession?.you?.username || joinIntent?.username,
-      isCreator: Boolean(activeSession?.you?.isHost || joinIntent?.isCreator),
-      hostToken: activeSession?.hostToken || joinIntent?.hostToken || null,
-    });
-  }, [emitJoinGame, ensureSocket]);
-
-  useEffect(() => {
-    const handleResume = () => {
-      const activeSession = sessionRef.current;
-      const joinIntent = joinIntentRef.current;
-      const sessionId = activeSession?.sessionId || joinIntent?.sessionId;
-      const username = activeSession?.you?.username || joinIntent?.username;
-
-      if (!sessionId || !username || awaitingJoinRef.current) {
-        return;
-      }
-
-      if (document.visibilityState && document.visibilityState !== 'visible') {
-        return;
-      }
-
-      const socket = socketRef.current;
-      if (!socket?.connected) {
-        setConnectionStatus('connecting');
-        socket?.connect();
-        return;
-      }
-
-      resyncSession();
-    };
-
-    window.addEventListener('focus', handleResume);
-    window.addEventListener('online', handleResume);
-    document.addEventListener('visibilitychange', handleResume);
-
-    return () => {
-      window.removeEventListener('focus', handleResume);
-      window.removeEventListener('online', handleResume);
-      document.removeEventListener('visibilitychange', handleResume);
-    };
-  }, [resyncSession]);
-
-  const leaveSession = useCallback(
-    (sessionId, { forgetPlayer = false } = {}) => {
-      if (forgetPlayer && sessionId) {
-        clearPlayerSession(sessionId);
-      }
-
-      socketRef.current?.disconnect();
-      awaitingJoinRef.current = false;
-      joinIntentRef.current = null;
-      setSession(null);
-      setQuestion(null);
-      setResults(null);
-      setGameEnd(null);
-      setConnectionStatus('disconnected');
-      setError('');
-      setNotice(null);
     },
     []
   );
 
-  const clearError = useCallback(() => {
-    setError('');
+  // Socket.IO is loaded on first use (joining a game), not on the landing page.
+  const ensureSocket = useCallback(async () => {
+    if (socketRef.current) return socketRef.current;
+    if (!socketPromiseRef.current) {
+      socketPromiseRef.current = import('socket.io-client').then(({ io }) => {
+        if (!socketRef.current) {
+          socketRef.current = createSocket(io);
+        }
+        return socketRef.current;
+      });
+    }
+    return socketPromiseRef.current;
   }, []);
+
+  const createSocket = (io) => {
+    const socket = io(getBackendUrl(), {
+      autoConnect: false,
+      transports: ['websocket', 'polling'],
+      reconnectionDelay: 800,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5, // spreads reconnect storms after a restart
+      timeout: 15000,
+    });
+    socket.on('connect', () => {
+      setConnection('connected');
+      setRestarting(null);
+      if (joinIntentRef.current) {
+        emitJoin(socket);
+      }
+    });
+    socket.on('disconnect', (reason) => {
+      setConnection(reason === 'io client disconnect' ? 'idle' : 'reconnecting');
+    });
+    socket.io.on('reconnect_attempt', () => setConnection(navigator.onLine === false ? 'offline' : 'reconnecting'));
+    socket.on('connect_error', () => setConnection(navigator.onLine === false ? 'offline' : 'reconnecting'));
+
+    const rememberSeat = (payload) => {
+      const username = payload.session.players.find((player) => player.playerId === payload.playerId)?.username || joinIntentRef.current?.username;
+      const seat = {
+        sessionId: payload.session.sessionId,
+        playerId: payload.playerId,
+        playerToken: payload.playerToken,
+        hostToken: payload.hostToken,
+        username,
+      };
+      savePlayerSession(seat.sessionId, seat);
+      joinIntentRef.current = { sessionId: seat.sessionId, username, hostToken: seat.hostToken };
+      setState((previous) => ({ ...previous, seat, session: payload.session }));
+      return seat;
+    };
+
+    socket.on('joined-game', (payload) => {
+      rememberSeat(payload);
+      if (payload.reconnected && stateRef.current.seat) {
+        showToast('Reconnected.');
+      }
+    });
+    socket.on('next-game-ready', (payload) => {
+      if (payload.previousSessionId) markPlayerSessionEnded(payload.previousSessionId);
+      rememberSeat(payload);
+      setState((previous) => ({ ...INITIAL_GAME_STATE, seat: previous.seat, session: payload.session }));
+      showToast(payload.hostToken ? 'Your next game is ready.' : 'The host started the next game.');
+    });
+    socket.on('state-snapshot', (snapshot) => setState((previous) => applySnapshot(previous, snapshot)));
+    socket.on('session-updated', (session) => {
+      setState((previous) => (previous.session && previous.session.sessionId !== session.sessionId ? previous : { ...previous, session }));
+    });
+    socket.on('question-start', (question) => {
+      setState((previous) => ({
+        ...previous,
+        question: { ...question, clientReceivedAt: Date.now() },
+        progress: { roundId: question.roundId, answeredCount: 0 },
+        myAnswer: null,
+        results: null,
+        roundResult: null,
+      }));
+    });
+    socket.on('answer-progress', (progress) => {
+      setState((previous) => (previous.question?.roundId === progress.roundId ? { ...previous, progress } : previous));
+    });
+    socket.on('question-results', (results) => {
+      setState((previous) => ({ ...previous, question: null, progress: null, results, roundResult: previous.roundResult?.roundId === results.roundId ? previous.roundResult : null }));
+    });
+    socket.on('round-result', (roundResult) => {
+      setState((previous) => ({ ...previous, roundResult, myAnswer: null }));
+    });
+    socket.on('game-end', ({ leaderboard }) => {
+      const sessionId = stateRef.current.seat?.sessionId;
+      if (sessionId) markPlayerSessionEnded(sessionId);
+      setState((previous) => ({ ...previous, question: null, results: null, leaderboard }));
+    });
+    socket.on('host-changed', ({ playerId, username, role }) => {
+      const mine = stateRef.current.seat?.playerId === playerId;
+      showToast(mine ? (role === 'temporary' ? 'The host is away — you can keep the game moving.' : 'You are the host.') : `${username} is now running the game.`);
+    });
+    socket.on('player-reconnected', ({ username }) => showToast(`${username} is back.`));
+    socket.on('server-restarting', ({ message }) => setRestarting(message));
+    socket.on('action-error', ({ message }) => showToast(message));
+    return socket;
+  };
+
+  useEffect(
+    () => () => {
+      clearTimeout(toastTimer.current);
+      const socket = socketRef.current;
+      if (socket) {
+        socket.removeAllListeners();
+        socket.io.removeAllListeners();
+        socket.close();
+      }
+    },
+    []
+  );
+
+  // Resync when the tab comes back: phones pause background tabs.
+  useEffect(() => {
+    const resume = async () => {
+      if (document.visibilityState === 'hidden' || !joinIntentRef.current) return;
+      const socket = socketRef.current;
+      if (!socket) return;
+      if (!socket.connected) {
+        setConnection('reconnecting');
+        socket.connect();
+        return;
+      }
+      try {
+        const ack = await socket.timeout(ACK_TIMEOUT_MS).emitWithAck('sync-state', {});
+        if (!ack.ok) emitJoin(socket);
+      } catch {
+        // Socket will notice the broken connection and reconnect.
+      }
+    };
+    const offline = () => setConnection('offline');
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
+    window.addEventListener('offline', offline);
+    return () => {
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('online', resume);
+      window.removeEventListener('offline', offline);
+    };
+  }, [emitJoin]);
+
+  const join = useCallback(
+    async ({ sessionId, username, hostToken = null, fresh = false }) => {
+      joinIntentRef.current = { sessionId: sessionId.toUpperCase(), username, hostToken, fresh };
+      setJoinError(null);
+      if (stateRef.current.session?.sessionId !== sessionId.toUpperCase()) {
+        setState(INITIAL_GAME_STATE);
+      }
+      setConnection('connecting');
+      const socket = await ensureSocket();
+      if (socket.connected) {
+        emitJoin(socket);
+      } else {
+        setConnection('connecting');
+        socket.connect();
+      }
+    },
+    [emitJoin, ensureSocket, setState]
+  );
+
+  const act = useCallback(async (eventName, payload = {}) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      return { ok: false, code: 'offline', message: 'You’re offline. Reconnecting…' };
+    }
+    try {
+      return await socket.timeout(ACK_TIMEOUT_MS).emitWithAck(eventName, payload);
+    } catch {
+      return { ok: false, code: 'timeout', message: 'No response from the server. Please try again.' };
+    }
+  }, []);
+
+  const submitAnswer = useCallback(
+    async (index) => {
+      const { question, myAnswer } = stateRef.current;
+      if (!question || (myAnswer && myAnswer.roundId === question.roundId && myAnswer.status !== 'failed')) return;
+      const roundId = question.roundId;
+      setState((previous) => ({ ...previous, myAnswer: { roundId, index, status: 'sending' } }));
+      const ack = await act('submit-answer', { answerIndex: index, roundId });
+      setState((previous) => {
+        if (previous.question?.roundId !== roundId) return previous;
+        if (ack.ok) {
+          return { ...previous, myAnswer: { roundId, index: ack.answerIndex, status: 'locked' } };
+        }
+        // Never pretend a failed answer counted.
+        return { ...previous, myAnswer: { roundId, index, status: 'failed', message: ack.message, code: ack.code } };
+      });
+    },
+    [act, setState]
+  );
+
+  const startGame = useCallback(async () => {
+    const ack = await act('start-game');
+    if (!ack.ok) showToast(ack.message);
+    return ack;
+  }, [act, showToast]);
+
+  const nextQuestion = useCallback(async () => {
+    const fromQuestionIndex = stateRef.current.results?.questionIndex ?? stateRef.current.session?.currentQuestionIndex;
+    const ack = await act('next-question', { fromQuestionIndex });
+    if (!ack.ok) showToast(ack.message);
+    return ack;
+  }, [act, showToast]);
+
+  const leave = useCallback(
+    async ({ forget = false } = {}) => {
+      const sessionId = stateRef.current.seat?.sessionId || joinIntentRef.current?.sessionId;
+      if (socketRef.current?.connected) {
+        await act('leave-game');
+      }
+      if (forget && sessionId) clearPlayerSession(sessionId);
+      joinIntentRef.current = null;
+      socketRef.current?.disconnect();
+      setState(INITIAL_GAME_STATE);
+      setJoinError(null);
+      setRestarting(null);
+      setConnection('idle');
+    },
+    [act, setState]
+  );
+
+  // Navigating away: close the connection but keep the saved seat, so the
+  // back button (or the invite link) returns the player to the same place.
+  const detach = useCallback(() => {
+    joinIntentRef.current = null;
+    socketRef.current?.disconnect();
+    setState(INITIAL_GAME_STATE);
+    setJoinError(null);
+    setRestarting(null);
+    setConnection('idle');
+  }, [setState]);
+
+  const retryJoin = useCallback(() => {
+    const socket = socketRef.current;
+    if (!joinIntentRef.current || !socket) return;
+    setJoinError(null);
+    if (socket.connected) emitJoin(socket);
+    else socket.connect();
+  }, [emitJoin]);
 
   const value = useMemo(
     () => ({
-      session,
-      question,
-      results,
-      gameEnd,
-      error,
-      notice,
-      connectionStatus,
-      joinSession,
-      startGame,
+      ...state,
+      connection,
+      joinError,
+      restarting,
+      toast,
+      isHost: Boolean(state.seat && state.session?.hostPlayerId === state.seat.playerId),
+      join,
+      detach,
+      retryJoin,
       submitAnswer,
+      startGame,
       nextQuestion,
-      resyncSession,
-      leaveSession,
-      clearError,
+      leave,
     }),
-    [
-      clearError,
-      connectionStatus,
-      error,
-      gameEnd,
-      joinSession,
-      leaveSession,
-      nextQuestion,
-      notice,
-      question,
-      resyncSession,
-      results,
-      session,
-      startGame,
-      submitAnswer,
-    ]
+    [state, connection, joinError, restarting, toast, join, detach, retryJoin, submitAnswer, startGame, nextQuestion, leave]
   );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

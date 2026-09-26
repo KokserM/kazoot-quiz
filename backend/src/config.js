@@ -6,7 +6,7 @@ const DEFAULT_QUESTION_TIME_LIMIT_MS = 20000;
 const DEFAULT_SESSION_RETENTION_MS = 1000 * 60 * 30;
 const DEFAULT_ENDED_SESSION_RETENTION_MS = 1000 * 60 * 10;
 const DEFAULT_MAX_ACTIVE_SESSIONS = 500;
-const DEFAULT_MAX_PLAYERS_PER_SESSION = 250;
+const DEFAULT_MAX_PLAYERS_PER_SESSION = 150;
 const DEFAULT_MAX_CONNECTED_PLAYERS = 5000;
 const DEFAULT_DEGRADED_ACTIVE_SESSIONS = 400;
 const DEFAULT_DEGRADED_CONNECTED_PLAYERS = 4000;
@@ -27,6 +27,12 @@ const DEFAULT_CREATE_SESSION_RATE_LIMIT_PER_15_MIN = 20;
 const DEFAULT_JOIN_RATE_LIMIT_PER_MIN = 30;
 const DEFAULT_FAILED_JOIN_RATE_LIMIT_PER_15_MIN = 20;
 const DEFAULT_SOCKET_EVENT_RATE_LIMIT_PER_10_SEC = 80;
+const DEFAULT_DEMO_RATE_LIMIT_PER_15_MIN = 12;
+const DEFAULT_MAX_DEMO_PLAYERS = 30;
+const DEFAULT_HOST_GRACE_MS = 20000;
+const DEFAULT_ANSWER_GRACE_MS = 400;
+const DEFAULT_OPENAI_TIMEOUT_MS = 45000;
+const DEFAULT_SHUTDOWN_GRACE_MS = 8000;
 
 function toNumber(value, fallback) {
   const parsed = Number(value);
@@ -141,10 +147,8 @@ const config = {
     DEFAULT_SOCKET_MAX_HTTP_BUFFER_SIZE
   ),
   openAiModel: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
-  aiModelFreeTier: process.env.AI_MODEL_FREE_TIER || process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
-  aiModelPaidTier: process.env.AI_MODEL_PAID_TIER || process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
   freeAiGamesPerMonth: toNumber(
-    process.env.FREE_AI_GAMES_PER_MONTH || process.env.FREE_AI_GAMES_PER_DAY,
+    process.env.FREE_AI_GAMES_PER_MONTH,
     DEFAULT_FREE_AI_GAMES_PER_MONTH
   ),
   aiCreditCostPerQuiz: toNumber(
@@ -184,10 +188,8 @@ const config = {
   stripeCreditPack20PriceId: process.env.STRIPE_CREDIT_PACK_20_PRICE_ID || '',
   stripeCreditPack60PriceId: process.env.STRIPE_CREDIT_PACK_60_PRICE_ID || '',
   stripeCreditPack150PriceId: process.env.STRIPE_CREDIT_PACK_150_PRICE_ID || '',
-  stripeCreditPack100PriceId: process.env.STRIPE_CREDIT_PACK_100_PRICE_ID || '',
-  stripeCreditPack250PriceId: process.env.STRIPE_CREDIT_PACK_250_PRICE_ID || '',
-  billingSuccessUrl: process.env.BILLING_SUCCESS_URL || `${frontendUrl || 'http://localhost:3000'}/account?billing=success`,
-  billingCancelUrl: process.env.BILLING_CANCEL_URL || `${frontendUrl || 'http://localhost:3000'}/account?billing=cancelled`,
+  billingSuccessUrl: process.env.BILLING_SUCCESS_URL || '',
+  billingCancelUrl: process.env.BILLING_CANCEL_URL || '',
   trustProxy: process.env.TRUST_PROXY || (process.env.RAILWAY_ENVIRONMENT_ID ? '1' : 'loopback'),
   detailedHealthEnabled: process.env.DETAILED_HEALTH === 'true',
   diagnosticsSecret: process.env.DIAGNOSTICS_SECRET || '',
@@ -207,6 +209,15 @@ const config = {
     process.env.SOCKET_EVENT_RATE_LIMIT_PER_10_SEC,
     DEFAULT_SOCKET_EVENT_RATE_LIMIT_PER_10_SEC
   ),
+  demoRateLimitPer15Min: toNumber(process.env.DEMO_RATE_LIMIT_PER_15_MIN, DEFAULT_DEMO_RATE_LIMIT_PER_15_MIN),
+  maxDemoPlayers: toNumber(process.env.MAX_DEMO_PLAYERS, DEFAULT_MAX_DEMO_PLAYERS),
+  hostGraceMs: toNumber(process.env.HOST_GRACE_MS, DEFAULT_HOST_GRACE_MS),
+  answerGraceMs: toNumber(process.env.ANSWER_GRACE_MS, DEFAULT_ANSWER_GRACE_MS),
+  openAiTimeoutMs: toNumber(process.env.OPENAI_TIMEOUT_MS, DEFAULT_OPENAI_TIMEOUT_MS),
+  openAiReasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'none',
+  shutdownGraceMs: toNumber(process.env.SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS),
+  billingVisiblePlans: process.env.BILLING_VISIBLE_PLANS || '',
+  stripePackInvoices: process.env.STRIPE_PACK_INVOICES === 'true',
   storeMode: 'single-instance-memory',
   railway: {
     projectId: process.env.RAILWAY_PROJECT_ID || '',

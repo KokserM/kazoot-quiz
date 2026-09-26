@@ -68,7 +68,7 @@ class SupabaseAuthService {
       return;
     }
 
-    await this.client.from('profiles').upsert(
+    const { error } = await this.client.from('profiles').upsert(
       {
         id: user.id,
         email: user.email,
@@ -78,7 +78,27 @@ class SupabaseAuthService {
       },
       { onConflict: 'id' }
     );
+    if (error) {
+      // Credit functions need the profile row; surface this instead of failing later.
+      throw new Error(`Failed to save profile: ${error.message}`);
+    }
     this.profileEnsureCache.set(cacheKey, Date.now());
+  }
+
+  // Deletes the Supabase user. profiles, credit grants, ledger and subscription rows
+  // cascade; quiz_generations and payments keep the row with user_id set to null
+  // (payments are accounting records).
+  async deleteUser(userId) {
+    if (!this.client) {
+      throw new Error('Accounts are not configured.');
+    }
+    const { error } = await this.client.auth.admin.deleteUser(userId);
+    if (error) {
+      throw new Error(`Failed to delete user: ${error.message}`);
+    }
+    for (const key of this.profileEnsureCache.keys()) {
+      if (key.startsWith(`${userId}:`)) this.profileEnsureCache.delete(key);
+    }
   }
 }
 

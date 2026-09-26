@@ -1,37 +1,16 @@
 function registerSocketHandlers(io, gameService) {
   io.on('connection', (socket) => {
-    if (socket.recovered) {
-      gameService.handleRecoveredConnection(socket);
-    }
+    const on = (eventName, handler) => socket.on(eventName, gameService.wrapSocketHandler(socket, handler));
 
-    socket.on(
-      'join-game',
-      gameService.wrapSocketHandler(socket, async (payload) => {
-        gameService.joinSession(socket, payload);
-      })
-    );
-
-    socket.on(
-      'start-game',
-      gameService.wrapSocketHandler(socket, async () => {
-        gameService.startGame(socket.id);
-      })
-    );
-
-    socket.on(
-      'submit-answer',
-      gameService.wrapSocketHandler(socket, async (payload) => {
-        const result = gameService.submitAnswer(socket.id, payload);
-        socket.emit('answer-submitted', result);
-      })
-    );
-
-    socket.on(
-      'next-question',
-      gameService.wrapSocketHandler(socket, async () => {
-        gameService.advance(socket.id);
-      })
-    );
+    on('join-game', (payload) => {
+      const joined = gameService.joinSession(socket, payload);
+      return { sessionId: joined.session.sessionId, reconnected: Boolean(joined.reconnected) };
+    });
+    on('sync-state', () => gameService.syncState(socket));
+    on('start-game', () => gameService.startGame(socket.id));
+    on('submit-answer', (payload) => gameService.submitAnswer(socket.id, payload));
+    on('next-question', (payload) => gameService.advance(socket.id, payload));
+    on('leave-game', () => gameService.leaveSession(socket));
 
     socket.on('disconnect', () => {
       gameService.handleDisconnect(socket.id);
