@@ -1,5 +1,5 @@
 import { createGlobalStyle } from 'styled-components';
-import { DARK_COLORS, LIGHT_COLORS, toCssVariables } from './tokens';
+import { LIGHT_COLORS, STAGE_COLORS, toCssVariables } from './tokens';
 import '@fontsource-variable/bricolage-grotesque';
 import '@fontsource/atkinson-hyperlegible/400.css';
 import '@fontsource/atkinson-hyperlegible/700.css';
@@ -10,18 +10,27 @@ export const GlobalStyle = createGlobalStyle`
     ${toCssVariables(LIGHT_COLORS)}
     --font-display: 'Bricolage Grotesque Variable', 'Segoe UI', system-ui, sans-serif;
     --font-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
-    --shadow: 0 1px 2px rgba(28, 26, 23, 0.06), 0 8px 24px rgba(28, 26, 23, 0.06);
-    --radius: 14px;
-    --radius-lg: 22px;
+    --shadow: 0 1px 2px rgba(11, 16, 32, 0.05), 0 6px 20px -8px rgba(11, 16, 32, 0.12);
+    --radius: 12px;
+    --radius-lg: 18px;
     --gutter: clamp(16px, 4vw, 32px);
     --max: 1120px;
 
+    --coral: #B45309;
     color-scheme: light;
+  }
+
+  /* Live game screens (and the landing preview) always use the stage theme. */
+  :root[data-stage='true'], [data-stage-scope] {
+    ${toCssVariables(STAGE_COLORS)}
+    --coral: var(--warning);
+    --shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+    color-scheme: dark;
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      ${toCssVariables(DARK_COLORS)}
+      ${toCssVariables(STAGE_COLORS)}
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
       color-scheme: dark;
     }
@@ -56,8 +65,8 @@ export const GlobalStyle = createGlobalStyle`
 
   p { margin: 0; text-wrap: pretty; }
 
-  a { color: var(--accent); text-underline-offset: 0.18em; }
-  a:hover { color: var(--accent-hover); }
+  a { color: var(--accent-text); text-underline-offset: 0.18em; }
+  a:hover { color: var(--ink); }
 
   button, input, select, textarea { font: inherit; color: inherit; }
 

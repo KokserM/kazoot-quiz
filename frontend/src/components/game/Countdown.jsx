@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import styled from 'styled-components';
+import styled, { css, keyframes } from 'styled-components';
+import { Icon } from '../Icon';
 import { getRemainingMs } from '../../lib/gameUi';
 
 export function useCountdown(question) {
@@ -14,39 +15,65 @@ export function useCountdown(question) {
   return remainingMs;
 }
 
+const pulse = keyframes`
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+`;
+
+// Urgency escalates in colour, border and motion (motion is removed for reduced-motion users).
+const LEVEL_COLOR = { calm: 'var(--accent-text)', soon: 'var(--warning)', urgent: 'var(--danger)' };
+
 const Wrap = styled.div`
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+  --level: ${({ $level }) => LEVEL_COLOR[$level]};
 `;
 
 const Seconds = styled.div`
-  min-width: 2.2ch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 4.4ch;
+  padding: 6px 14px;
+  border-radius: 14px;
+  border: 2px solid var(--level);
+  color: var(--level);
   font-family: var(--font-display);
-  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  font-size: clamp(1.7rem, 4.5vw, 2.8rem);
   font-weight: 700;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: ${({ $urgent }) => ($urgent ? 'var(--coral)' : 'var(--ink)')};
+  svg {
+    width: 0.6em;
+    height: 0.6em;
+  }
+  ${({ $level }) =>
+    $level === 'urgent' &&
+    css`
+      animation: ${pulse} 1s ease-in-out infinite;
+    `}
 `;
 
 const Track = styled.div`
-  height: 10px;
-  border-radius: 999px;
+  height: 12px;
+  border-radius: 6px;
   background: var(--surface-sunk);
   overflow: hidden;
 `;
 
 const Fill = styled.div`
   height: 100%;
-  border-radius: 999px;
-  background: ${({ $urgent }) => ($urgent ? 'var(--coral)' : 'var(--accent)')};
-  transition: width 200ms linear;
+  border-radius: 6px;
+  background: var(--level);
+  transition: width 200ms linear, background-color 300ms ease;
 `;
 
 export function Countdown({ question, remainingMs }) {
   const seconds = Math.ceil(remainingMs / 1000);
-  const urgent = remainingMs <= 5000;
+  const level = remainingMs <= 5000 ? 'urgent' : remainingMs <= 10000 ? 'soon' : 'calm';
   const ratio = question ? Math.max(0, Math.min(1, remainingMs / question.timeLimit)) : 0;
 
   // Announce a few moments to screen readers, not every second.
@@ -61,8 +88,9 @@ export function Countdown({ question, remainingMs }) {
   }, [seconds]);
 
   return (
-    <Wrap>
-      <Seconds $urgent={urgent} aria-hidden="true">
+    <Wrap $level={level}>
+      <Seconds $level={level} aria-hidden="true">
+        <Icon name="clock" />
         {seconds}
       </Seconds>
       <Track
@@ -72,7 +100,7 @@ export function Countdown({ question, remainingMs }) {
         aria-valuemax={Math.round((question?.timeLimit || 0) / 1000)}
         aria-valuenow={seconds}
       >
-        <Fill $urgent={urgent} style={{ width: `${ratio * 100}%` }} />
+        <Fill style={{ width: `${ratio * 100}%` }} />
       </Track>
       <span className="visually-hidden" aria-live="polite">
         {announcement}

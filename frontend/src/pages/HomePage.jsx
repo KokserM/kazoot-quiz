@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { AnswerGrid } from '../components/game/AnswerGrid';
+import { Countdown } from '../components/game/Countdown';
+import { Icon } from '../components/Icon';
 import { PlanGrid, PricingExplainer } from '../components/Pricing';
 import { Card, Container, Eyebrow, LinkButton, Muted, Row, SectionTitle, Stack } from '../components/ui';
 import { track } from '../lib/analytics';
@@ -22,13 +24,19 @@ const HeroGrid = styled(Container)`
 `;
 
 const Headline = styled.h1`
-  font-size: clamp(2.5rem, 7vw, 4.6rem);
-  line-height: 0.98;
+  font-size: clamp(2.4rem, 4.6vw, 3.9rem);
+  line-height: 1;
   letter-spacing: -0.035em;
+  .line {
+    display: block;
+    @media (min-width: 700px) {
+      white-space: nowrap;
+    }
+  }
 
   em {
     font-style: normal;
-    color: var(--accent);
+    color: var(--accent-text);
   }
 `;
 
@@ -38,16 +46,18 @@ const Lead = styled.p`
   max-width: 34em;
 `;
 
+// The preview is a real piece of the game UI, rendered in the stage theme.
 const Preview = styled.figure`
   margin: 0;
-  padding: clamp(16px, 2.5vw, 24px);
-  border-radius: 28px;
-  background: var(--surface);
+  padding: clamp(18px, 2.6vw, 28px);
+  border-radius: 24px;
+  background: var(--paper);
+  color: var(--ink);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow);
+  box-shadow: 0 30px 60px -30px rgba(11, 16, 32, 0.55);
 
   figcaption {
-    margin-top: 12px;
+    margin-top: 14px;
     font-size: 0.88rem;
     color: var(--ink-3);
   }
@@ -56,23 +66,11 @@ const Preview = styled.figure`
 const PreviewTop = styled.div`
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   color: var(--ink-3);
   font-weight: 700;
-  font-size: 0.9rem;
-  margin-bottom: 10px;
-`;
-
-const PreviewBar = styled.div`
-  height: 8px;
-  border-radius: 999px;
-  background: var(--surface-sunk);
-  margin: 14px 0;
-  div {
-    width: 62%;
-    height: 100%;
-    border-radius: 999px;
-    background: var(--accent);
-  }
+  font-size: 0.88rem;
+  margin-bottom: 12px;
 `;
 
 const Band = styled.section`
@@ -102,8 +100,9 @@ const Steps = styled.ol`
     width: 44px;
     height: 44px;
     margin-bottom: 14px;
-    border-radius: 50%;
-    border: 2px solid var(--ink);
+    border-radius: 12px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 1.2rem;
@@ -213,9 +212,11 @@ export default function HomePage() {
       <Hero>
         <HeroGrid>
           <Stack $gap={22}>
-            <Eyebrow>Live quiz for groups</Eyebrow>
+            <Eyebrow>Live quiz game for groups</Eyebrow>
             <Headline>
-              Pick a topic. Everyone plays — <em>including you.</em>
+              <span className="line">Pick a topic.</span>{' '}
+              <span className="line">Everyone plays —</span>{' '}
+              <em className="line">including you.</em>
             </Headline>
             <Lead>
               Kazoot writes a 10-question quiz on the topic you choose. Friends join on their phones with a code — and because you haven’t seen the
@@ -234,18 +235,18 @@ export default function HomePage() {
             </Muted>
           </Stack>
 
-          <Preview aria-label="Preview of the question screen">
-            <div aria-hidden="true" inert>
+          <Preview aria-label="Preview of the question screen" data-stage-scope="">
+            <Stack $gap={14} aria-hidden="true" inert>
               <PreviewTop>
                 <span>Question 3 of 10</span>
-                <span>7 of 9 answered</span>
+                <span>
+                  <Icon name="users" /> 7 of 9 answered
+                </span>
               </PreviewTop>
-              <h2 style={{ fontSize: 'clamp(1.3rem, 2.6vw, 1.8rem)' }}>Which spice comes from the dried stigmas of a crocus flower?</h2>
-              <PreviewBar>
-                <div />
-              </PreviewBar>
+              <h2 style={{ fontSize: 'clamp(1.3rem, 2.4vw, 1.75rem)', lineHeight: 1.15 }}>Which spice comes from the dried stigmas of a crocus flower?</h2>
+              <Countdown question={{ timeLimit: 20000 }} remainingMs={12400} />
               <AnswerGrid choices={['Turmeric', 'Saffron', 'Cardamom', 'Paprika']} selectedIndex={1} selectionStatus="locked" disabled onSelect={() => {}} />
-            </div>
+            </Stack>
             <figcaption>The real question screen, shown with a question from the free demo.</figcaption>
           </Preview>
         </HeroGrid>

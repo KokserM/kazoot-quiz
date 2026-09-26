@@ -1,6 +1,7 @@
 import React, { forwardRef, useId } from 'react';
 import { Link } from 'react-router-dom';
 import styled, { css, keyframes } from 'styled-components';
+import { Icon } from './Icon';
 
 // Small, consistent building blocks. Colours and spacing come from the CSS
 // variables in styles/GlobalStyle.js.
@@ -53,35 +54,37 @@ const buttonBase = css`
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: ${({ $size }) => ($size === 'lg' ? '56px' : $size === 'sm' ? '38px' : '46px')};
-  padding: 0 ${({ $size }) => ($size === 'lg' ? '26px' : $size === 'sm' ? '14px' : '20px')};
-  border-radius: 999px;
-  border: 2px solid transparent;
+  min-height: ${({ $size }) => ($size === 'lg' ? '56px' : $size === 'sm' ? '40px' : '48px')};
+  padding: 0 ${({ $size }) => ($size === 'lg' ? '28px' : $size === 'sm' ? '14px' : '20px')};
+  border-radius: ${({ $size }) => ($size === 'sm' ? '10px' : '12px')};
+  border: 1.5px solid transparent;
   font-family: var(--font-body);
   font-weight: 700;
   font-size: ${({ $size }) => ($size === 'lg' ? '1.1rem' : $size === 'sm' ? '0.92rem' : '1rem')};
   line-height: 1.1;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, transform 80ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
   width: ${({ $block }) => ($block ? '100%' : 'auto')};
   white-space: nowrap;
 
   &:active:not(:disabled) { transform: translateY(1px); }
-  &:disabled, &[aria-disabled='true'] { cursor: not-allowed; opacity: 0.55; }
+  &:disabled, &[aria-disabled='true'] { cursor: not-allowed; opacity: 0.5; box-shadow: none; }
+  &:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 12px; }
 
   ${({ $variant = 'primary' }) =>
     ({
       primary: css`
         background: var(--accent);
         color: var(--accent-ink);
-        &:hover:not(:disabled) { background: var(--accent-hover); color: var(--accent-ink); }
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 8px 18px -10px rgba(37, 99, 235, 0.9);
+        &:hover:not(:disabled) { background: var(--accent-hover); color: var(--accent-ink); transform: translateY(-1px); }
       `,
       secondary: css`
         background: var(--surface);
         color: var(--ink);
         border-color: var(--line-strong);
-        &:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+        &:hover:not(:disabled) { border-color: var(--accent-text); color: var(--ink); background: var(--accent-soft); }
       `,
       ghost: css`
         background: transparent;
@@ -219,7 +222,8 @@ const Segment = styled.label`
   input { position: absolute; opacity: 0; inset: 0; cursor: pointer; margin: 0; }
   small { font-weight: 400; font-size: 0.82rem; color: var(--ink-3); }
 
-  &:has(input:checked) { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); outline: 2px solid var(--ink); }
+  &:has(input:checked) { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 2px var(--accent); }
+  &:has(input:checked) small { color: var(--ink-2); }
   &:has(input:focus-visible) { outline: 3px solid var(--focus); }
 `;
 
@@ -241,41 +245,65 @@ export function SegmentedControl({ legend, name, value, options, onChange, disab
 }
 
 const noticeTones = {
-  info: css`background: var(--accent-soft); border-color: var(--accent);`,
-  success: css`background: var(--success-soft); border-color: var(--success);`,
-  warning: css`background: var(--warning-soft); border-color: var(--warning);`,
-  danger: css`background: var(--danger-soft); border-color: var(--danger);`,
+  info: css`background: var(--accent-soft); --tone: var(--accent-text);`,
+  success: css`background: var(--success-soft); --tone: var(--success);`,
+  warning: css`background: var(--warning-soft); --tone: var(--warning);`,
+  danger: css`background: var(--danger-soft); --tone: var(--danger);`,
 };
+const NOTICE_ICONS = { info: 'info', success: 'check', warning: 'alert', danger: 'alert' };
 
-export const Notice = styled.div.attrs(({ $tone }) => ({ role: $tone === 'danger' ? 'alert' : 'status' }))`
-  padding: 12px 16px;
-  border-radius: var(--radius);
-  border-left: 5px solid;
-  color: var(--ink);
+const NoticeBox = styled.div`
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+  color: var(--ink);
+  line-height: 1.45;
   ${({ $tone = 'info' }) => noticeTones[$tone]}
+
+  > svg {
+    color: var(--tone);
+    margin-top: 0.2em;
+  }
+  > .notice-body {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    min-width: 0;
+  }
 `;
 
+// Compact status message with an icon; role is set by tone (alerts interrupt, others don't).
+export function Notice({ $tone = 'info', children, ...props }) {
+  return (
+    <NoticeBox $tone={$tone} role={$tone === 'danger' ? 'alert' : 'status'} {...props}>
+      <Icon name={NOTICE_ICONS[$tone]} size="1.1em" />
+      <div className="notice-body">{children}</div>
+    </NoticeBox>
+  );
+}
+
+// Labels, not controls: flat tint, no border, so they never look clickable.
 export const Badge = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 4px 9px;
+  border-radius: 8px;
   font-size: 0.82rem;
   font-weight: 700;
-  border: 1px solid var(--line-strong);
-  color: var(--ink-2);
-  background: var(--surface);
   white-space: nowrap;
+  background: var(--surface-sunk);
+  color: var(--ink-2);
   ${({ $tone }) =>
     $tone &&
     css`
-      border-color: var(--${$tone});
+      background: var(--${$tone}-soft);
       color: var(--${$tone});
     `}
 `;

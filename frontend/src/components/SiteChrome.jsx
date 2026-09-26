@@ -41,7 +41,7 @@ const Nav = styled.nav`
 
   a.nav-link {
     padding: 8px 12px;
-    border-radius: 999px;
+    border-radius: 10px;
     color: var(--ink-2);
     text-decoration: none;
     font-weight: 700;
@@ -140,7 +140,7 @@ const ToastBox = styled.div`
   z-index: 50;
   max-width: min(92vw, 460px);
   padding: 12px 18px;
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--ink);
   color: var(--paper);
   font-weight: 700;

@@ -194,9 +194,12 @@ function contrast(a, b) {
 test('text colour tokens meet WCAG AA contrast in light and dark themes', () => {
   const l = LIGHT_COLORS;
   const d = { ...LIGHT_COLORS, ...DARK_COLORS };
+  for (const answer of ['answer-a', 'answer-b', 'answer-c', 'answer-d']) {
+    expect(contrast(d[answer], d.surface), `${answer} border on stage`).toBeGreaterThanOrEqual(3);
+  }
   const pairs = [
     ['ink', 'paper'], ['ink-2', 'paper'], ['ink-3', 'paper'], ['ink-3', 'surface'], ['ink-3', 'surface-sunk'],
-    ['accent-ink', 'accent'], ['accent', 'paper'], ['success', 'paper'], ['danger', 'paper'], ['warning', 'paper'],
+    ['accent-ink', 'accent'], ['accent-ink', 'accent-hover'], ['accent-text', 'paper'], ['accent-text', 'surface'], ['success', 'paper'], ['danger', 'paper'], ['warning', 'paper'],
     ['danger', 'danger-soft'], ['success', 'success-soft'], ['warning', 'warning-soft'],
   ];
   for (const theme of [l, d]) {
@@ -204,8 +207,15 @@ test('text colour tokens meet WCAG AA contrast in light and dark themes', () => 
       expect(contrast(theme[fg], theme[bg]), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
     }
   }
+  // Non-text contrast (WCAG 1.4.11): buttons, focus ring and tile borders against the page.
+  for (const theme of [l, d]) {
+    expect(contrast(theme.accent, theme.paper), 'button fill').toBeGreaterThanOrEqual(3);
+    expect(contrast(theme.focus, theme.paper), 'focus ring').toBeGreaterThanOrEqual(3);
+    expect(contrast(theme['line-strong'], theme.surface), 'input border').toBeGreaterThanOrEqual(3);
+    expect(contrast(theme['correct-ring'], theme.paper), 'correct ring').toBeGreaterThanOrEqual(3);
+  }
   for (const answer of ['answer-a', 'answer-b', 'answer-c', 'answer-d']) {
-    expect(contrast('#FFFFFF', l[answer]), answer).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(l['answer-ink'], l[answer]), answer).toBeGreaterThanOrEqual(4.5);
   }
 });
 

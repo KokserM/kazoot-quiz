@@ -90,8 +90,8 @@ export default function DemoPage() {
                             padding: '12px 14px',
                             borderRadius: 14,
                             cursor: 'pointer',
-                            border: `2px solid ${demoId === quiz.id ? 'var(--ink)' : 'var(--line)'}`,
-                            background: demoId === quiz.id ? 'var(--surface)' : 'transparent',
+                            border: `2px solid ${demoId === quiz.id ? 'var(--accent)' : 'var(--line)'}`,
+                            background: demoId === quiz.id ? 'var(--accent-soft)' : 'transparent',
                           }}
                         >
                           <input type="radio" name="demo-quiz" value={quiz.id} checked={demoId === quiz.id} onChange={() => setDemoId(quiz.id)} style={{ marginTop: 5 }} />

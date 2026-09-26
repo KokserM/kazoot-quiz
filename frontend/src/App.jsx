@@ -62,6 +62,9 @@ function Loading() {
 function Layout() {
   const location = useLocation();
   const inGame = location.pathname.startsWith('/session/');
+  useEffect(() => {
+    document.documentElement.dataset.stage = inGame ? 'true' : 'false';
+  }, [inGame]);
   return (
     <>
       <a href="#main-start" className="visually-hidden" style={{ position: 'absolute' }}>

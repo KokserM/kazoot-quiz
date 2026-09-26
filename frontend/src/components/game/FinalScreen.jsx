@@ -25,7 +25,7 @@ const Podium = styled.ol`
     text-align: center;
   }
   li:first-child {
-    border: 2px solid var(--accent);
+    border: 2px solid var(--accent-text);
     background: var(--accent-soft);
   }
   .place {

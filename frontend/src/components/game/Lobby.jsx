@@ -42,12 +42,12 @@ const Players = styled.ul`
   gap: 8px;
   li {
     padding: 8px 14px;
-    border-radius: 999px;
+    border-radius: 10px;
     background: var(--surface-sunk);
     font-weight: 700;
   }
   li[data-me='true'] {
-    outline: 2px solid var(--accent);
+    box-shadow: inset 0 0 0 2px var(--accent-text);
     background: var(--accent-soft);
   }
   li[data-offline='true'] {

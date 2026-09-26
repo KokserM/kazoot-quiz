@@ -103,3 +103,20 @@ frontend/src/
   components/ui.jsx   design-system primitives; styles/tokens.js colours
   providers/          game client (socket protocol), auth
 ```
+
+## Design system
+
+- **Two themes, one set of tokens** (`frontend/src/styles/tokens.js`): a crisp light theme for
+  the site (landing, setup, pricing, account) and a midnight-navy **stage** theme for every live
+  game screen (`<html data-stage="true">`) and the landing-page preview (`data-stage-scope`).
+  Dark-mode users get the stage palette everywhere.
+- **Action colour:** electric blue `#2563EB` with white text (5.2:1). Blue *text* uses
+  `--accent-text` (dark blue on light, periwinkle on navy).
+- **Answer tiles:** cyan, pink, amber, periwinkle with navy text (7–11:1), always with a letter,
+  never shapes. Chosen, correct and incorrect are distinguished by ring, fill, icon and label —
+  a selection is never styled like a correct answer. Tile focus is dashed so it can't be confused
+  with the solid rings.
+- **Shape:** 12 px controls, 16–18 px cards and tiles, 8 px labels. Pills are avoided.
+- **Type:** Bricolage Grotesque (display) and Atkinson Hyperlegible (body), self-hosted.
+- Contrast for every text and control pair is enforced by `App.test.jsx`; axe checks run in
+  `a11y.test.jsx`.
