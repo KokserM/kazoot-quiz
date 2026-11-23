@@ -116,7 +116,13 @@ class StripeBillingService {
     }
 
     const customer = await this.client.customers.create(
-      { email: user.email || undefined, metadata: { userId: user.id } },
+      {
+        email: user.email || undefined,
+        metadata: { userId: user.id },
+        // Subscription invoices can't take a per-invoice footer from Checkout, so the
+        // customer default carries the withdrawal-waiver confirmation onto every invoice.
+        invoice_settings: { footer: WITHDRAWAL_CONFIRMATION_TEXT },
+      },
       { idempotencyKey: `kazoot-customer-${user.id}` }
     );
     await this.aiUsageService.setStripeCustomerId(user.id, customer.id);

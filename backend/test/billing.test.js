@@ -289,6 +289,7 @@ test('checkout: requires consent, reuses one Stripe customer, and blocks a secon
       assert.equal(ok.status, 200);
     }
     assert.equal(state.customerCreates.length, 1, 'one Stripe customer per user');
+    assert.match(state.customerCreates[0].params.invoice_settings.footer, /right of withdrawal/, 'invoices carry the withdrawal waiver');
     assert.equal(state.checkoutCreates[1].customer, 'cus_1');
     assert.equal(state.checkoutCreates[0].metadata.userId, TEST_USER.id);
     assert.equal(state.checkoutCreates[0].customer_email, undefined);

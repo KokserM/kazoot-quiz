@@ -60,8 +60,10 @@ warn players before it stops (Railway's default is 0 seconds).
 2. Customer portal (Settings → Billing → Customer portal): enable cancellation (at period
    end), payment-method update and invoice history. **Disable plan switching** — plan
    changes create proration invoices that intentionally grant nothing automatically.
-3. Invoice/receipt footer: add the withdrawal-waiver confirmation text (see LAUNCH.md) and
-   set `STRIPE_PACK_INVOICES=true` so pack buyers receive it by email.
+3. Withdrawal-waiver confirmation: the server puts it in the invoice footer itself (per
+   invoice for packs, as the customer default for subscriptions). Set
+   `STRIPE_PACK_INVOICES=true` so packs get an invoice, and in Settings → Customer emails
+   turn on emails for successful payments and finalized invoices so buyers receive it.
 4. Test everything in test mode first (section 5).
 
 ## 4. Release procedure
