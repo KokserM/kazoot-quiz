@@ -20,9 +20,14 @@ const DEFAULT_DAILY_OPENAI_BUDGET_USD = 10;
 const DEFAULT_MONTHLY_OPENAI_BUDGET_USD = 100;
 const DEFAULT_MAX_AI_GENERATIONS_PER_USER_PER_HOUR = 5;
 const DEFAULT_MAX_AI_GENERATIONS_PER_IP_PER_HOUR = 10;
-const DEFAULT_OPENAI_MODEL = 'gpt-5.6-sol';
-const DEFAULT_OPENAI_EST_INPUT_COST_PER_1M = 4;
-const DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M = 20;
+// GPT-6.2 Sol: $2 / $10 per 1M input / output tokens (standard tier, Nov 2026).
+const DEFAULT_OPENAI_MODEL = 'gpt-6.2-sol';
+const DEFAULT_OPENAI_EST_INPUT_COST_PER_1M = 2;
+const DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M = 10;
+// GPT-6.x rejects reasoning effort "none"; "low" is the cheapest accepted value.
+const DEFAULT_OPENAI_REASONING_EFFORT = 'low';
+// Reasoning tokens count against this limit, so it must leave room for them.
+const DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 8000;
 const DEFAULT_CREATE_SESSION_RATE_LIMIT_PER_15_MIN = 20;
 const DEFAULT_JOIN_RATE_LIMIT_PER_MIN = 30;
 const DEFAULT_FAILED_JOIN_RATE_LIMIT_PER_15_MIN = 20;
@@ -214,7 +219,8 @@ const config = {
   hostGraceMs: toNumber(process.env.HOST_GRACE_MS, DEFAULT_HOST_GRACE_MS),
   answerGraceMs: toNumber(process.env.ANSWER_GRACE_MS, DEFAULT_ANSWER_GRACE_MS),
   openAiTimeoutMs: toNumber(process.env.OPENAI_TIMEOUT_MS, DEFAULT_OPENAI_TIMEOUT_MS),
-  openAiReasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'none',
+  openAiReasoningEffort: process.env.OPENAI_REASONING_EFFORT || DEFAULT_OPENAI_REASONING_EFFORT,
+  openAiMaxOutputTokens: toNumber(process.env.OPENAI_MAX_OUTPUT_TOKENS, DEFAULT_OPENAI_MAX_OUTPUT_TOKENS),
   shutdownGraceMs: toNumber(process.env.SHUTDOWN_GRACE_MS, DEFAULT_SHUTDOWN_GRACE_MS),
   billingVisiblePlans: process.env.BILLING_VISIBLE_PLANS || '',
   stripePackInvoices: process.env.STRIPE_PACK_INVOICES === 'true',
@@ -257,7 +263,9 @@ function isOriginAllowed(origin) {
 module.exports = {
   DEFAULT_OPENAI_EST_INPUT_COST_PER_1M,
   DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M,
+  DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
   DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_REASONING_EFFORT,
   config,
   isOriginAllowed,
 };

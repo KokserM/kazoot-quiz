@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { QuestionService, parseTopicIntent, toGameQuestion } = require('../src/quiz/questionService');
+const { QuestionService, parseTopicIntent, resolveReasoningEffort, toGameQuestion } = require('../src/quiz/questionService');
+const {
+  DEFAULT_OPENAI_EST_INPUT_COST_PER_1M,
+  DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M,
+  DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_REASONING_EFFORT,
+} = require('../src/config');
 const { getDemoQuiz, listDemoQuizzes } = require('../src/quiz/demoQuizzes');
 const { getQuestionProblem, sanitizeQuizInput } = require('../src/security/promptGuard');
 
@@ -21,11 +28,12 @@ function ok(questions) {
   return response({ status: 'ok', reason: '', questions });
 }
 
-function serviceWith(responses, { flagged = false } = {}) {
+function serviceWith(responses, { flagged = false, model = 'test-model', config = {} } = {}) {
   const requests = [];
   const service = new QuestionService({
     apiKey: null,
-    model: 'test-model',
+    model,
+    config,
     client: {
       moderations: { create: async () => ({ results: [{ flagged }] }) },
       responses: {
@@ -111,6 +119,56 @@ test('auth errors are not retried; format rejections fall back to prompt-only JS
   assert.equal(quiz.questions.length, 10);
   assert.equal(fallback.requests[1].text.format, undefined);
   assert.match(fallback.requests[1].instructions, /JSON Schema/);
+});
+
+test('defaults target GPT-6.2 Sol with reasoning headroom and matching cost estimates', async () => {
+  assert.equal(DEFAULT_OPENAI_MODEL, 'gpt-6.2-sol');
+  assert.equal(DEFAULT_OPENAI_EST_INPUT_COST_PER_1M, 2);
+  assert.equal(DEFAULT_OPENAI_EST_OUTPUT_COST_PER_1M, 10);
+  assert.equal(DEFAULT_OPENAI_REASONING_EFFORT, 'low');
+
+  const { service, requests } = serviceWith([ok(Array.from({ length: 12 }, (_, i) => candidate(i)))], { model: 'gpt-6.2-sol' });
+  await service.generateQuiz({ topic: 'Volcanoes', language: 'English' });
+  assert.equal(requests[0].model, 'gpt-6.2-sol');
+  assert.deepEqual(requests[0].reasoning, { effort: 'low' });
+  assert.equal(requests[0].max_output_tokens, DEFAULT_OPENAI_MAX_OUTPUT_TOKENS);
+  assert.ok(requests[0].max_output_tokens >= 6000, 'reasoning tokens need room beyond the ~1k visible answer');
+  assert.equal(requests[0].text.verbosity, 'low');
+});
+
+test('an old "none" reasoning setting is mapped to "low" for GPT-6 models only', () => {
+  assert.equal(resolveReasoningEffort('gpt-6.2-sol', 'none'), 'low');
+  assert.equal(resolveReasoningEffort('gpt-6.1-sol', 'minimal'), 'low');
+  assert.equal(resolveReasoningEffort('gpt-6.2-sol', 'medium'), 'medium');
+  assert.equal(resolveReasoningEffort('gpt-5.6-sol', 'none'), 'none', 'rollback to 5.6 keeps its cheapest setting');
+  assert.equal(resolveReasoningEffort('gpt-6.2-sol', undefined), 'low');
+});
+
+test('a rejected verbosity or reasoning setting is dropped and the request resent once', async () => {
+  const verbosityError = Object.assign(new Error("Unsupported parameter: 'text.verbosity' is not supported with this model."), { status: 400 });
+  const verbosity = serviceWith([verbosityError, ok(Array.from({ length: 12 }, (_, i) => candidate(i)))], { model: 'gpt-6.2-sol' });
+  const quiz = await verbosity.service.generateQuiz({ topic: 'Space', language: 'English' });
+  assert.equal(quiz.questions.length, 10);
+  assert.equal(verbosity.requests.length, 2);
+  assert.equal(verbosity.requests[1].text.verbosity, undefined);
+  assert.equal(verbosity.requests[1].text.format.type, 'json_schema', 'structured output is kept');
+
+  const effortError = Object.assign(new Error("Unsupported value: 'reasoning.effort' does not support 'xhigh' with this model."), { status: 400 });
+  const effort = serviceWith([effortError, ok(Array.from({ length: 12 }, (_, i) => candidate(i)))], {
+    model: 'gpt-6.2-sol',
+    config: { openAiReasoningEffort: 'xhigh' },
+  });
+  await effort.service.generateQuiz({ topic: 'Space', language: 'English' });
+  assert.deepEqual(effort.requests.map((request) => request.reasoning.effort), ['xhigh', 'low']);
+});
+
+test('a response cut off by the output limit is reported as such', async () => {
+  const truncated = { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: '{"status":"ok","questions":[', usage: { input_tokens: 700, output_tokens: 8000 } };
+  const { service } = serviceWith([truncated, truncated]);
+  await assert.rejects(service.generateQuiz({ topic: 'Space', language: 'English' }), (error) => {
+    assert.match(error.message, /incomplete: max_output_tokens/);
+    return true;
+  });
 });
 
 test('never substitutes unrelated questions when generation fails', async () => {

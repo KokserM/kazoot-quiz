@@ -3,6 +3,7 @@ const OpenAI = require('openai');
 const { getDemoQuiz } = require('./demoQuizzes');
 const { quizSchema } = require('../validation/schemas');
 const { sanitizeQuizInput, getQuestionProblem, normalizePlainText, comparable } = require('../security/promptGuard');
+const { DEFAULT_OPENAI_MAX_OUTPUT_TOKENS, DEFAULT_OPENAI_REASONING_EFFORT } = require('../config');
 
 const QUESTIONS_PER_QUIZ = 10;
 // Ask for a few extra so one weak question doesn't force a full (paid) retry.
@@ -58,6 +59,17 @@ function parseTopicIntent(topic) {
     subject: subject || topic,
     requestedDifficulty: matched?.difficulty || null,
   };
+}
+
+// GPT-6.x models reject reasoning effort "none" and "minimal"; OpenAI's migration guide
+// says to use "low" instead. Mapping here keeps an old OPENAI_REASONING_EFFORT=none
+// variable from silently breaking every generation after a model switch.
+function resolveReasoningEffort(model, effort) {
+  const value = String(effort || DEFAULT_OPENAI_REASONING_EFFORT).trim().toLowerCase();
+  if (/^gpt-6/i.test(String(model || '')) && (value === 'none' || value === 'minimal')) {
+    return 'low';
+  }
+  return value;
 }
 
 function secureShuffle(items) {
@@ -122,6 +134,11 @@ class QuestionService {
   constructor({ apiKey, model, config = {}, client = undefined }) {
     this.model = model;
     this.config = config;
+    this.reasoningEffort = resolveReasoningEffort(model, config.openAiReasoningEffort);
+    this.maxOutputTokens = config.openAiMaxOutputTokens || DEFAULT_OPENAI_MAX_OUTPUT_TOKENS;
+    // Set once the model rejects an optional request field; later requests omit it.
+    this.structuredOutputUnsupported = false;
+    this.verbosityUnsupported = false;
     this.client =
       client !== undefined
         ? client
@@ -189,31 +206,61 @@ class QuestionService {
     return chunks.join('').trim();
   }
 
-  async requestQuiz(input, attempt) {
+  buildRequest(input, attempt) {
+    const text = this.verbosityUnsupported ? {} : { verbosity: 'low' };
     const request = {
       model: this.model,
-      reasoning: { effort: this.config.openAiReasoningEffort || 'none' },
-      max_output_tokens: 3000,
+      reasoning: { effort: this.reasoningEffort },
+      max_output_tokens: this.maxOutputTokens,
       instructions: INSTRUCTIONS,
       input: [{ role: 'user', content: [{ type: 'input_text', text: buildUserMessage(input, attempt) }] }],
-      text: { verbosity: 'low' },
     };
 
     if (this.structuredOutputUnsupported) {
       request.instructions = `${INSTRUCTIONS}\nReturn only JSON matching this JSON Schema, with no other text:\n${JSON.stringify(QUIZ_JSON_SCHEMA)}`;
-      return this.client.responses.create(request);
+      if (Object.keys(text).length > 0) {
+        request.text = text;
+      }
+    } else {
+      request.text = { ...text, format: { type: 'json_schema', name: 'quiz', strict: true, schema: QUIZ_JSON_SCHEMA } };
     }
+    return request;
+  }
 
+  // When the model rejects an optional request field (HTTP 400), switch it off for this
+  // process and report true so the caller can resend. Each switch flips at most once,
+  // so a request is resent at most three times. The result is validated either way.
+  adaptToRejectedRequest(error) {
+    if (error?.status !== 400) {
+      return false;
+    }
+    const message = String(error.message);
+    const warn = (event, extra = {}) =>
+      console.warn(JSON.stringify({ level: 'warn', event, model: this.model, ...extra }));
+
+    if (!this.verbosityUnsupported && /verbosity/i.test(message)) {
+      this.verbosityUnsupported = true;
+      warn('verbosity_unsupported');
+      return true;
+    }
+    if (this.reasoningEffort !== 'low' && /reasoning/i.test(message) && /effort/i.test(message)) {
+      warn('reasoning_effort_rejected', { rejected: this.reasoningEffort, using: 'low' });
+      this.reasoningEffort = 'low';
+      return true;
+    }
+    if (!this.structuredOutputUnsupported && /format|json_schema|structured/i.test(message)) {
+      this.structuredOutputUnsupported = true;
+      warn('structured_output_unsupported');
+      return true;
+    }
+    return false;
+  }
+
+  async requestQuiz(input, attempt) {
     try {
-      return await this.client.responses.create({
-        ...request,
-        text: { ...request.text, format: { type: 'json_schema', name: 'quiz', strict: true, schema: QUIZ_JSON_SCHEMA } },
-      });
+      return await this.client.responses.create(this.buildRequest(input, attempt));
     } catch (error) {
-      // Some models reject strict structured output; the result is validated either way.
-      if (error.status === 400 && /format|json_schema|structured/i.test(String(error.message))) {
-        this.structuredOutputUnsupported = true;
-        console.warn(JSON.stringify({ level: 'warn', event: 'structured_output_unsupported', model: this.model }));
+      if (this.adaptToRejectedRequest(error)) {
         return this.requestQuiz(input, attempt);
       }
       throw error;
@@ -284,7 +331,9 @@ class QuestionService {
       try {
         parsed = JSON.parse(this.extractText(response));
       } catch (error) {
-        lastProblem = `invalid_json (status ${response.status || 'unknown'})`;
+        // "incomplete: max_output_tokens" means the limit is too low for the reasoning used.
+        const incompleteReason = response.incomplete_details?.reason;
+        lastProblem = `invalid_json (status ${response.status || 'unknown'}${incompleteReason ? `: ${incompleteReason}` : ''})`;
         continue;
       }
 
@@ -340,5 +389,6 @@ module.exports = {
   QuizGenerationError,
   QUIZ_JSON_SCHEMA,
   parseTopicIntent,
+  resolveReasoningEffort,
   toGameQuestion,
 };

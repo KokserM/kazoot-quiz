@@ -18,7 +18,9 @@ Required in production:
 | `CORS_ALLOWED_ORIGINS` | no | e.g. `https://www.kazoot.app` if that host is live |
 | `TRUST_PROXY=1` | no | correct client IPs behind Railway's proxy (rate limits) |
 | `OPENAI_API_KEY` | **yes** | |
-| `OPENAI_MODEL` | no | default `gpt-5.6-sol` |
+| `OPENAI_MODEL` | no | default `gpt-6.2-sol` (see §8 for switching models) |
+| `OPENAI_EST_INPUT_COST_PER_1M`, `OPENAI_EST_OUTPUT_COST_PER_1M` | no | defaults 2 / 10 (GPT-6.2 Sol); budget caps use these, so update them with the model |
+| `OPENAI_REASONING_EFFORT` | no | default `low`; GPT-6.x rejects `none` |
 | `DAILY_OPENAI_BUDGET_USD`, `MONTHLY_OPENAI_BUDGET_USD` | no | hard caps; recommended 3 / 30 until revenue grows |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | **yes** (key) | backend only — never in a `VITE_` variable |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | **yes** | `sk_test_`/`whsec_` in staging, live keys only in production |
@@ -93,7 +95,8 @@ unused games; `stripe trigger` events replay harmlessly.
   (`profiles_update_own`, which let users edit their own `stripe_customer_id`); do not
   recreate it. Everything else it adds can stay. Never drop `credit_grants`, `usage_ledger`
   or `payments` — they hold customer entitlements.
-- **Model change:** set `OPENAI_MODEL` back and redeploy.
+- **Model change:** set `OPENAI_MODEL` and the two `OPENAI_EST_*` costs back (§8) and
+  redeploy.
 
 ## 7. Operations
 
@@ -109,3 +112,26 @@ unused games; `stripe trigger` events replay harmlessly.
 - Capacity (see LAUNCH.md): tested to 1,000 concurrent players and 250 per room on a
   development machine; production cap defaults to 150 per room.
 - Data retention runs daily (IP addresses 30 days, topics 12 months, events 13 months).
+
+## 8. Switching the AI model
+
+Railway variables override the code defaults, so a model switch is a variables change:
+
+| Model | `OPENAI_MODEL` | `OPENAI_EST_INPUT_COST_PER_1M` | `OPENAI_EST_OUTPUT_COST_PER_1M` | `OPENAI_REASONING_EFFORT` |
+| --- | --- | --- | --- | --- |
+| GPT-6.2 Sol (default) | `gpt-6.2-sol` | `2` | `10` | `low` |
+| GPT-5.6 Sol (rollback) | `gpt-5.6-sol` | `4` | `20` | `none` |
+
+- GPT-6.x rejects reasoning effort `none`/`minimal`; the server maps them to `low` for
+  GPT-6 models, so a leftover `none` cannot break generation.
+- Output tokens include reasoning tokens. `OPENAI_MAX_OUTPUT_TOKENS` (default 8000) must
+  leave room for them; a log line `invalid_json (status incomplete: max_output_tokens)`
+  means it is too low or the effort too high.
+- If the model rejects `text.verbosity`, a reasoning effort, or strict JSON-schema output,
+  the server logs `verbosity_unsupported`, `reasoning_effort_rejected` or
+  `structured_output_unsupported`, drops that field and resends. The quiz is validated
+  either way.
+
+After switching: create one AI quiz in English and one in Estonian, then check
+`quiz_generations` for the new model name, token counts, `succeeded` status and an
+estimated cost of a few US cents. Watch `generation_failed` in the logs for a day.
