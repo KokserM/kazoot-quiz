@@ -14,8 +14,8 @@ Required in production:
 | Variable | Secret? | Notes |
 | --- | --- | --- |
 | `NODE_ENV=production` | no | |
-| `FRONTEND_URL=https://kazoot.app` | no | CORS, checkout and portal return URLs |
-| `CORS_ALLOWED_ORIGINS` | no | e.g. `https://www.kazoot.app` if that host is live |
+| `FRONTEND_URL=https://www.kazoot.app` | no | CORS, checkout and portal return URLs — must be the host Railway serves (§9) |
+| `CORS_ALLOWED_ORIGINS` | no | extra origins, comma-separated; usually empty |
 | `TRUST_PROXY=1` | no | correct client IPs behind Railway's proxy (rate limits) |
 | `OPENAI_API_KEY` | **yes** | |
 | `OPENAI_MODEL` | no | default `gpt-6.2-sol` (see §8 for switching models) |
@@ -41,8 +41,8 @@ warn players before it stops (Railway's default is 0 seconds).
    applied in production), `002_plus_30_top_up.sql` (optional, one-off, already reviewed),
    **`003_launch_hardening.sql` (new — required by this release)**.
    003 is additive and idempotent; the currently deployed version keeps working after it runs.
-2. Auth → URL configuration: Site URL `https://kazoot.app`; redirect URLs
-   `https://kazoot.app/**` (and `https://www.kazoot.app/**` only if www is live).
+2. Auth → URL configuration: Site URL `https://www.kazoot.app`; redirect URLs
+   `https://www.kazoot.app/**` (sign-in returns to the page's own origin, which is www).
 3. After 003, check Database → Advisors (security) shows no RLS or function warnings for
    `public`.
 4. Backups: the free plan keeps daily backups for a short period; confirm the current
@@ -51,7 +51,8 @@ warn players before it stops (Railway's default is 0 seconds).
 
 ## 3. Stripe
 
-1. Webhook endpoint `https://kazoot.app/api/billing/webhook` with these events:
+1. Webhook endpoint `https://www.kazoot.app/api/billing/webhook` (never the bare domain:
+   it redirects, and Stripe does not follow redirects) with these events:
    `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
    `checkout.session.async_payment_failed`, `invoice.paid`, `invoice.payment_failed`,
    `customer.subscription.created`, `customer.subscription.updated`,
@@ -70,7 +71,7 @@ warn players before it stops (Railway's default is 0 seconds).
 2. Back up the database.
 3. Run `003_launch_hardening.sql` if not yet applied.
 4. Merge and let Railway deploy. Watch logs for `server_started` and check
-   `https://kazoot.app/health` → `{"status":"healthy"}` and `/ready`.
+   `https://www.kazoot.app/health` → `{"status":"healthy"}` and `/ready`.
 5. Smoke test: open `/demo`, run a solo preview to the end; join a demo room from a phone;
    sign in and create one AI quiz (costs one of your free games); open `/account`.
 6. Replay recent Stripe events to repair subscription grants missed before this release:
@@ -135,3 +136,20 @@ Railway variables override the code defaults, so a model switch is a variables c
 After switching: create one AI quiz in English and one in Estonian, then check
 `quiz_generations` for the new model name, token counts, `succeeded` status and an
 estimated cost of a few US cents. Watch `generation_failed` in the logs for a day.
+
+## 9. Domains
+
+Railway serves **`www.kazoot.app`** (custom domain on the `kazoot-quiz` service). The bare
+`kazoot.app` is not on Railway: its DNS (Porkbun) points at Porkbun's URL forwarding,
+which redirects to www.
+
+- The forward must **keep the path and query** (`kazoot.app/join/ABC…` →
+  `www.kazoot.app/join/ABC…`). In Porkbun → Domain Management → `kazoot.app` → URL
+  Forwarding, edit the record and enable the option to include the requested URI path.
+  Check afterwards: `curl -sI https://kazoot.app/join/TEST` must show
+  `Location: https://www.kazoot.app/join/TEST`.
+- Anything a machine calls (Stripe webhook, uptime checks) uses www directly; redirects
+  are for people.
+- Alternative: serve the bare domain from Railway too (add `kazoot.app` as a second custom
+  domain, then replace the forwarding with the ALIAS record Railway shows) so nothing
+  redirects at all.
