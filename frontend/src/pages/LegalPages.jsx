@@ -61,7 +61,8 @@ function Seller() {
     <p>
       {LEGAL.sellerName}
       {LEGAL.registryCode ? `, registry code ${LEGAL.registryCode}` : ''}
-      {LEGAL.vatNumber ? `, VAT number ${LEGAL.vatNumber}` : ''}, {LEGAL.address}. Email: <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>.
+      {LEGAL.vatNumber ? `, VAT number ${LEGAL.vatNumber}` : ''}
+      {LEGAL.address ? `, ${LEGAL.address}` : ''}. Email: <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>.
     </p>
   );
 }

@@ -174,7 +174,8 @@ export function SiteFooter() {
           {hasSellerIdentity ? (
             <p>
               {LEGAL.sellerName}
-              {LEGAL.registryCode ? `, reg. code ${LEGAL.registryCode}` : ''} · {LEGAL.address}
+              {LEGAL.registryCode ? `, reg. code ${LEGAL.registryCode}` : ''}
+              {LEGAL.address ? ` · ${LEGAL.address}` : ''}
             </p>
           ) : null}
         </div>

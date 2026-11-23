@@ -11,4 +11,6 @@ export const LEGAL = {
   lastUpdated: '2026-09-26',
 };
 
-export const hasSellerIdentity = Boolean(LEGAL.sellerName && LEGAL.address);
+// The address is optional: the owner can choose not to publish it (it remains public in
+// the Estonian e-Business Register under the registry code).
+export const hasSellerIdentity = Boolean(LEGAL.sellerName);

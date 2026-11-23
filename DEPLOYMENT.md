@@ -27,7 +27,7 @@ Required in production:
 | `STRIPE_*_PRICE_ID` (5) | no | must match the mode (test/live) of the secret key |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | no (public) | build-time; the anon key is designed to be public, RLS protects data |
 | `VITE_SUPPORT_EMAIL` | no | |
-| `VITE_LEGAL_SELLER_NAME`, `VITE_LEGAL_REGISTRY_CODE`, `VITE_LEGAL_ADDRESS` (+ `VITE_LEGAL_VAT_NUMBER` if registered) | no | shown on legal pages; required before selling |
+| `VITE_LEGAL_SELLER_NAME`, `VITE_LEGAL_REGISTRY_CODE`, `VITE_LEGAL_ADDRESS` (+ `VITE_LEGAL_VAT_NUMBER` if registered) | no | shown on legal pages and in the footer; name required before selling. The address is optional (left empty, it is not shown) — note EU distance-selling rules expect a geographical address |
 
 Optional: `BILLING_VISIBLE_PLANS`, `STRIPE_PACK_INVOICES=true`, `MAX_PLAYERS_PER_SESSION`
 (default 150), `HOST_GRACE_MS`, `DETAILED_HEALTH`, `DIAGNOSTICS_SECRET`.
