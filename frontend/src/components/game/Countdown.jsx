@@ -1,48 +1,45 @@
 import React, { useEffect, useRef, useState } from 'react';
-import styled, { css, keyframes } from 'styled-components';
+import styled, { css } from 'styled-components';
 import { Icon } from '../Icon';
 import { getRemainingMs } from '../../lib/gameUi';
 
-export function useCountdown(question) {
-  const [remainingMs, setRemainingMs] = useState(() => getRemainingMs(question));
+export function useCountdown(question, override) {
+  const [remainingMs, setRemainingMs] = useState(() => (override ?? getRemainingMs(question)));
   useEffect(() => {
-    if (!question) return undefined;
+    if (!question || override !== undefined) return undefined;
     const tick = () => setRemainingMs(getRemainingMs(question));
     tick();
     const id = setInterval(tick, 200);
     return () => clearInterval(id);
-  }, [question]);
-  return remainingMs;
+  }, [question, override]);
+  return override ?? remainingMs;
 }
-
-const pulse = keyframes`
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.06); }
-`;
 
 // Urgency escalates in colour, border and motion (motion is removed for reduced-motion users).
 const LEVEL_COLOR = { calm: 'var(--accent-text)', soon: 'var(--warning)', urgent: 'var(--danger)' };
 
 const Wrap = styled.div`
-  display: grid;
-  grid-template-columns: auto 1fr;
+  display: flex;
   align-items: center;
-  gap: 16px;
+  gap: clamp(8px, 1.6cqw, 20px);
+  flex: 1 1 0;
+  min-width: 0;
   --level: ${({ $level }) => LEVEL_COLOR[$level]};
 `;
 
 const Seconds = styled.div`
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-width: 4.4ch;
-  padding: 6px 14px;
-  border-radius: 14px;
+  gap: 0.25em;
+  min-width: 2.4ch;
+  padding: 0.12em 0.45em;
+  border-radius: clamp(10px, 1.8cqh, 16px);
   border: 2px solid var(--level);
   color: var(--level);
   font-family: var(--font-display);
-  font-size: clamp(1.7rem, 4.5vw, 2.8rem);
+  font-size: clamp(calc(1.15rem * var(--floor, 1)), min(4.6cqh, 4.2cqw), 4rem);
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -50,28 +47,55 @@ const Seconds = styled.div`
     width: 0.6em;
     height: 0.6em;
   }
+  /* The clock icon only where there is room for it. */
+  @container game (max-width: 599px) {
+    svg {
+      display: none !important;
+    }
+  }
+  ${({ $compact }) =>
+    $compact &&
+    css`
+      font-size: 1.4rem;
+      border-radius: 10px;
+    `}
   ${({ $level }) =>
     $level === 'urgent' &&
     css`
-      animation: ${pulse} 1s ease-in-out infinite;
+      @media (prefers-reduced-motion: no-preference) {
+        animation: bump 1s ease-in-out infinite;
+        --bump-to: 1.06;
+      }
     `}
 `;
 
+// Sized by its own width only to drop the bar when less than 32 px are left; its
+// height still comes from the game stage (cqh).
+const TrackBox = styled.div`
+  flex: 1 1 0;
+  min-width: 0;
+  container-type: inline-size;
+`;
+
 const Track = styled.div`
-  height: 12px;
-  border-radius: 6px;
+  height: ${({ $compact }) => ($compact ? '8px' : 'clamp(6px, 1.2cqh, 18px)')};
+  border-radius: 999px;
   background: var(--surface-sunk);
   overflow: hidden;
+  @container (max-width: 31px) {
+    display: none;
+  }
 `;
 
 const Fill = styled.div`
   height: 100%;
-  border-radius: 6px;
+  border-radius: inherit;
   background: var(--level);
-  transition: width 200ms linear, background-color 300ms ease;
+  transform-origin: left center;
+  transition: transform 200ms linear, background-color 300ms ease;
 `;
 
-export function Countdown({ question, remainingMs }) {
+export function Countdown({ question, remainingMs, compact = false, announce = true }) {
   const seconds = Math.ceil(remainingMs / 1000);
   const level = remainingMs <= 5000 ? 'urgent' : remainingMs <= 10000 ? 'soon' : 'calm';
   const ratio = question ? Math.max(0, Math.min(1, remainingMs / question.timeLimit)) : 0;
@@ -88,23 +112,28 @@ export function Countdown({ question, remainingMs }) {
   }, [seconds]);
 
   return (
-    <Wrap $level={level}>
-      <Seconds $level={level} aria-hidden="true">
+    <Wrap $level={level} data-countdown="">
+      <Seconds $level={level} $compact={compact} aria-hidden="true">
         <Icon name="clock" />
         {seconds}
       </Seconds>
-      <Track
-        role="progressbar"
-        aria-label="Time left in seconds"
-        aria-valuemin={0}
-        aria-valuemax={Math.round((question?.timeLimit || 0) / 1000)}
-        aria-valuenow={seconds}
-      >
-        <Fill style={{ width: `${ratio * 100}%` }} />
-      </Track>
-      <span className="visually-hidden" aria-live="polite">
-        {announcement}
-      </span>
+      <TrackBox>
+        <Track
+          $compact={compact}
+          role="progressbar"
+          aria-label="Time left in seconds"
+          aria-valuemin={0}
+          aria-valuemax={Math.round((question?.timeLimit || 0) / 1000)}
+          aria-valuenow={seconds}
+        >
+          <Fill style={{ transform: `scaleX(${ratio})` }} />
+        </Track>
+      </TrackBox>
+      {announce ? (
+        <span className="visually-hidden" aria-live="polite">
+          {announcement}
+        </span>
+      ) : null}
     </Wrap>
   );
 }

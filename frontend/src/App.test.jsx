@@ -64,9 +64,13 @@ test('landing page leads with the host-plays-too promise and both calls to actio
   expect(screen.getByRole('link', { name: 'Create a quiz' })).toHaveAttribute('href', '/create');
   // Pricing comes from the server catalog, not hard-coded copy.
   // Every offer is actionable: paid plans go through the account page (sign-in, consent, Stripe).
-  expect(await screen.findByRole('link', { name: 'Subscribe to Plus' })).toHaveAttribute('href', '/account?buy=plus_monthly');
-  expect(screen.getByRole('link', { name: 'Buy Pack 20' })).toHaveAttribute('href', '/account?buy=credits_20');
+  // One switch: packs first, monthly plans one tap away (never both at once).
+  expect(await screen.findByRole('link', { name: 'Buy Pack 20' })).toHaveAttribute('href', '/account?buy=credits_20');
+  expect(screen.queryByRole('link', { name: 'Subscribe to Plus' })).toBeNull();
   expect(screen.getByRole('link', { name: 'Start free' })).toHaveAttribute('href', '/create');
+  fireEvent.click(screen.getByRole('radio', { name: /Monthly plans/ }));
+  expect(screen.getByRole('link', { name: 'Subscribe to Plus' })).toHaveAttribute('href', '/account?buy=plus_monthly');
+  expect(screen.queryByRole('link', { name: 'Buy Pack 20' })).toBeNull();
   expect(screen.getByRole('heading', { name: 'Plus' }).closest('article')).toHaveTextContent('€5/ month30 AI games every month');
   expect(screen.getByText(/AI can be wrong/)).toBeInTheDocument();
   expect(navigator.sendBeacon).toHaveBeenCalled();
@@ -86,14 +90,14 @@ test('join page accepts the 10-character room codes the server issues', () => {
   renderAt('/join', <JoinPage />);
   const code = screen.getByLabelText('Room code');
   fireEvent.change(code, { target: { value: 'abcde-23456' } });
-  expect(code).toHaveValue('ABCDE23456');
+  expect(code).toHaveValue('ABCDE 23456');
   fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Mari' } });
   expect(screen.getByRole('button', { name: 'Join game' })).toBeEnabled();
 });
 
 test('join links prefill the code from the URL', () => {
   renderAt('/join/ABCDE23456', <JoinPage />, '/join/:code');
-  expect(screen.getByLabelText('Room code')).toHaveValue('ABCDE23456');
+  expect(screen.getByLabelText('Room code')).toHaveValue('ABCDE 23456');
 });
 
 test('room code helpers', () => {

@@ -5,6 +5,7 @@ import { NotFoundPage, SiteFooter, SiteHeader } from './components/SiteChrome';
 import { Container, PageMain, Spinner } from './components/ui';
 import HomePage from './pages/HomePage';
 import { GameProvider } from './providers/GameProvider';
+import { useGameShellMounted } from './lib/useGameShell';
 import { GlobalStyle } from './styles/GlobalStyle';
 
 const DemoPage = lazy(() => import('./pages/DemoPage'));
@@ -18,6 +19,8 @@ const TermsPage = lazy(() => legal().then((module) => ({ default: module.TermsPa
 const RefundsPage = lazy(() => legal().then((module) => ({ default: module.RefundsPage })));
 const ContactPage = lazy(() => legal().then((module) => ({ default: module.ContactPage })));
 const PricingPage = lazy(() => legal().then((module) => ({ default: module.PricingPage })));
+// Dev-only game-stage gallery (brief 12, A2); not part of production builds.
+const DevStagePage = import.meta.env.DEV ? lazy(() => import('./pages/DevStagePage')) : null;
 
 const TITLES = {
   '/': 'Kazoot — live quizzes where the host plays too',
@@ -80,7 +83,9 @@ function Loading() {
 
 function Layout() {
   const location = useLocation();
-  const inGame = location.pathname.startsWith('/session/');
+  const inGame = location.pathname.startsWith('/session/') || (import.meta.env.DEV && location.pathname.startsWith('/dev/stage'));
+  // While the game shell is on screen there is no site header or footer (brief 8.1).
+  const shellMounted = useGameShellMounted();
   useEffect(() => {
     document.documentElement.dataset.stage = inGame ? 'true' : 'false';
   }, [inGame]);
@@ -89,7 +94,7 @@ function Layout() {
       <a href="#main-start" className="visually-hidden" style={{ position: 'absolute' }}>
         Skip to content
       </a>
-      <SiteHeader minimal={inGame} />
+      {shellMounted ? null : <SiteHeader minimal={inGame} />}
       <div id="main-start" tabIndex={-1} style={{ outline: 'none' }} />
       <Suspense fallback={<Loading />}>
         <Routes>
@@ -105,10 +110,11 @@ function Layout() {
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/refunds" element={<RefundsPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          {DevStagePage ? <Route path="/dev/stage" element={<DevStagePage />} /> : null}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
-      {inGame ? null : <SiteFooter />}
+      {inGame || shellMounted ? null : <SiteFooter />}
     </>
   );
 }

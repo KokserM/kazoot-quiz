@@ -3,9 +3,10 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Toast } from '../components/SiteChrome';
 import { ConnectionBanner } from '../components/game/ConnectionBanner';
 import { FinalScreen } from '../components/game/FinalScreen';
+import { Body, GameFrame, GameShell, LogoTile, TopBar } from '../components/game/GameShell';
 import { Lobby } from '../components/game/Lobby';
 import { QuestionScreen, ResultsScreen } from '../components/game/RoundScreens';
-import { Button, Card, Container, ErrorNotice, Field, Input, LinkButton, Muted, Notice, PageMain, PageTitle, Row, Spinner, Stack } from '../components/ui';
+import { Button, Card, Container, ErrorNotice, Field, Input, LinkButton, Muted, PageMain, PageTitle, Row, Spinner, Stack } from '../components/ui';
 import { normalizeRoomCode, formatRoomCode } from '../lib/gameUi';
 import { loadPlayerSession, saveLastName } from '../lib/storage';
 import { useConfig } from '../lib/useConfig';
@@ -125,6 +126,57 @@ export default function SessionPage() {
     navigate('/');
   };
 
+  const banner = <ConnectionBanner connection={connection} restarting={game.restarting} onRetry={game.retryJoin} />;
+  const hasBanner = Boolean(game.restarting) || connection === 'offline' || connection === 'reconnecting';
+
+  // Live phases render inside the fixed, non-scrolling game shell (brief 8.1).
+  const phase = session && seat && session.sessionId === seat.sessionId && !joinError?.fatal && joinRequested ? session.gameState : null;
+  let screen = null;
+  let shellPhase = null;
+  if (phase === 'waiting') {
+    shellPhase = 'lobby';
+    screen = <Lobby session={session} seat={seat} isHost={game.isHost} solo={isSolo} onStart={game.startGame} onLeave={leave} />;
+  } else if (phase === 'question' && game.question) {
+    shellPhase = 'question';
+    screen = <QuestionScreen question={game.question} myAnswer={game.myAnswer} progress={game.progress} session={session} onAnswer={game.submitAnswer} />;
+  } else if (phase === 'results' && game.results) {
+    shellPhase = 'reveal';
+    screen = <ResultsScreen results={game.results} roundResult={game.roundResult} session={session} seat={seat} isHost={game.isHost} onNext={game.nextQuestion} />;
+  } else if (phase === 'ended' && game.leaderboard) {
+    shellPhase = 'final';
+    screen = <FinalScreen leaderboard={game.leaderboard} session={session} seat={seat} isHost={game.isHost} config={config} onLeave={leave} />;
+  } else if (phase === 'question' || phase === 'results' || phase === 'ended') {
+    // A live phase whose payload has not arrived yet: stay on the stage.
+    shellPhase = { question: 'question', results: 'reveal', ended: 'final' }[phase];
+    screen = (
+      <GameFrame data-dock="none">
+        <TopBar left={<LogoTile />} />
+        <Body>
+          <Row>
+            <Spinner aria-hidden="true" />
+            <span role="status">Loading…</span>
+          </Row>
+        </Body>
+      </GameFrame>
+    );
+  }
+
+  if (shellPhase) {
+    return (
+      <GameShell
+        phase={shellPhase}
+        role={game.isHost ? 'host' : 'player'}
+        banner={hasBanner ? banner : null}
+        solo={isSolo && shellPhase !== 'final'}
+        sessionId={session.sessionId}
+        canBigScreen={game.isHost}
+      >
+        {screen}
+        <Toast toast={game.toast} placement="top" />
+      </GameShell>
+    );
+  }
+
   let content;
   if (joinError?.fatal) {
     content = (
@@ -159,45 +211,20 @@ export default function SessionPage() {
       </Container>
     );
   } else {
-    const phase = session.gameState;
-    let screen;
-    if (phase === 'waiting') {
-      screen = <Lobby session={session} seat={seat} isHost={game.isHost} solo={isSolo} onStart={game.startGame} onLeave={leave} />;
-    } else if (phase === 'question' && game.question) {
-      screen = <QuestionScreen question={game.question} myAnswer={game.myAnswer} progress={game.progress} session={session} onAnswer={game.submitAnswer} />;
-    } else if (phase === 'results' && game.results) {
-      screen = <ResultsScreen results={game.results} roundResult={game.roundResult} session={session} seat={seat} isHost={game.isHost} onNext={game.nextQuestion} />;
-    } else if (phase === 'ended' && game.leaderboard) {
-      screen = <FinalScreen leaderboard={game.leaderboard} session={session} seat={seat} isHost={game.isHost} config={config} onLeave={leave} />;
-    } else {
-      screen = (
+    // A live phase without its payload yet (e.g. results before the round result).
+    content = (
+      <Container $narrow>
         <Row>
           <Spinner aria-hidden="true" />
           <span role="status">Loading…</span>
         </Row>
-      );
-    }
-    content = (
-      <Container>
-        <Stack $gap={16}>
-          {isSolo && phase !== 'ended' ? (
-            <Notice $tone="info">
-              <span>
-                <strong>Solo preview</strong> — just you, no other players. Invite people any time by hosting the demo for a group.
-              </span>
-            </Notice>
-          ) : null}
-          {screen}
-        </Stack>
       </Container>
     );
   }
 
   return (
     <PageMain>
-      <Container style={{ marginBottom: 12 }}>
-        <ConnectionBanner connection={connection} restarting={game.restarting} onRetry={game.retryJoin} />
-      </Container>
+      {hasBanner ? <Container style={{ marginBottom: 12 }}>{banner}</Container> : null}
       {content}
       <Toast toast={game.toast} />
     </PageMain>
