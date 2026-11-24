@@ -38,10 +38,14 @@ export function describePlan(plan) {
 // down in per-game price; Plus is the entry subscription. The owner can change these.
 export const PREFERRED_PLAN = { payment: 'credits_60', subscription: 'plus_monthly' };
 
-// Card-brand and wallet marks shown after the Stripe sentence in the pay line, as
-// { name, icon } (icon: a 24 px-high monochrome SVG element in currentColor).
-// Left empty until the owner confirms which methods are enabled in Stripe.
-export const PAYMENT_MARKS = [];
+// Payment methods the owner has switched on in Stripe (Settings → Payments → Payment
+// methods), shown as quiet name chips in the pay line. Checkout itself decides what each
+// buyer sees (device, country, currency). Subscriptions list only methods that support
+// recurring payments. Keep in step with the Stripe settings.
+export const PAYMENT_MARKS = {
+  payment: ['Card', 'Apple Pay', 'Google Pay', 'Link', 'Klarna', 'Revolut Pay'],
+  subscription: ['Card', 'Apple Pay', 'Google Pay', 'Link'],
+};
 
 // The free plan's ticks, also listed on the signed-out account page.
 export const freeAiGamesLabel = (count) => `${count} AI games a month`;
@@ -451,8 +455,24 @@ const PayRow = styled.div`
   text-align: center;
   > p { font-size: inherit; }
   .stripe svg { color: var(--ink-3); margin-right: 6px; }
-  .marks { display: inline-flex; gap: 8px; align-items: center; color: var(--ink-3); }
-  .marks svg { height: 24px; width: auto; }
+  .marks {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .marks li {
+    padding: 2px 8px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    color: var(--ink-2);
+    font-weight: 700;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
   @media (max-width: 560px) {
     flex-direction: column;
     align-items: flex-start;
@@ -462,21 +482,20 @@ const PayRow = styled.div`
 
 // Who takes the money and how, right under the buy buttons. The seller line renders
 // nothing without a seller identity; the gap keeps no empty row or separator behind.
-export function PayLine() {
+export function PayLine({ group = 'payment' }) {
+  const marks = PAYMENT_MARKS[group] || [];
   return (
     <PayRow className="pay-line">
       <p className="stripe">
         <Icon name="lock" />
         Payments are handled by Stripe.
       </p>
-      {PAYMENT_MARKS.length ? (
-        <span className="marks">
-          {PAYMENT_MARKS.map(({ name, icon }) => (
-            <span key={name} role="img" aria-label={name}>
-              {icon}
-            </span>
+      {marks.length ? (
+        <ul className="marks">
+          {marks.map((name) => (
+            <li key={name}>{name}</li>
           ))}
-        </span>
+        </ul>
       ) : null}
       <p>Prices include any VAT that applies.</p>
       <SellerLine label="Sold by" />
@@ -575,7 +594,7 @@ export function PlanGrid({ plans, config, renderAction = (plan, { preferred }) =
               return <PlanCard key={plan.id} plan={plan} terms={own[index]} preferred={preferred} action={renderAction(plan, { preferred })} />;
             })}
           </Cards>
-          <PayLine />
+          <PayLine group={group} />
         </GroupBlock>
       ) : null}
     </Offers>

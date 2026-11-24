@@ -99,7 +99,7 @@ test('with one group there is no switch, only its heading', () => {
 });
 
 test('the pay line under the cards names Stripe, VAT and the seller, never the address', () => {
-  expect(PAYMENT_MARKS).toEqual([]);
+  expect(PAYMENT_MARKS.subscription.every((name) => PAYMENT_MARKS.payment.includes(name))).toBe(true);
   const { container } = renderGrid();
   const payLine = container.querySelector('.pay-line');
   expect(payLine).toHaveTextContent('Payments are handled by Stripe.');
@@ -115,7 +115,7 @@ test('without a seller identity the pay line has no seller row', () => {
   const { container } = renderGrid();
   const payLine = container.querySelector('.pay-line');
   expect(payLine).not.toHaveTextContent('Sold by');
-  expect(payLine.children).toHaveLength(2);
+  expect(payLine.children).toHaveLength(3); // Stripe sentence, payment methods, VAT sentence
   legal.LEGAL = saved;
 });
 
