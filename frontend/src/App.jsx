@@ -32,6 +32,24 @@ const TITLES = {
   '/contact': 'Contact · Kazoot',
 };
 
+const CANONICAL_ORIGIN = 'https://www.kazoot.app';
+
+// Public pages point search engines and link previews at www.kazoot.app + the page's
+// path (invite links /join/CODE collapse to /join). Game rooms and unknown paths get none.
+function syncCanonical(base) {
+  let link = document.querySelector('link[rel="canonical"]');
+  if (!TITLES[base]) {
+    link?.remove();
+    return;
+  }
+  if (!link) {
+    link = document.createElement('link');
+    link.setAttribute('rel', 'canonical');
+    document.head.appendChild(link);
+  }
+  link.setAttribute('href', `${CANONICAL_ORIGIN}${base}`);
+}
+
 // Keeps the document title meaningful and moves focus to the top on navigation,
 // so screen-reader and keyboard users land at the start of the new page.
 function RouteEffects() {
@@ -39,6 +57,7 @@ function RouteEffects() {
   useEffect(() => {
     const base = `/${location.pathname.split('/')[1] || ''}`;
     document.title = TITLES[base] || (base === '/session' ? 'Game · Kazoot' : 'Kazoot');
+    syncCanonical(base);
     if (!location.hash) {
       window.scrollTo(0, 0);
       document.getElementById('main-start')?.focus({ preventScroll: true });

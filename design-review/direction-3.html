@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kazoot — Direction 3: Tile Arcade (home mockup)</title>
+<!--
+  DIRECTION 3 — "TILE ARCADE"
+  Static mockup. All visible copy is taken verbatim from www.kazoot.app (home, /join, /create and game screens).
+  The logo is a CSS stand-in for the real raster mark. The dashed "placeholder" box marks content that does not exist yet.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,700..900&family=DM+Sans:opsz,wght@9..40,400..700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --cream:#FFF7E8; --white:#FFFFFF; --ink:#140E22; --ink-2:#3D3553; --ink-3:#5E5673;
+  --violet:#7C3AED; --violet-soft:#EFE7FF;
+  --a:#22D3EE; --b:#FF7AB6; --c:#FFC53D; --d:#8FB0FF;
+  --stage:#100A1C; --stage-2:#251B3A;
+  --display:'Archivo','Arial Black','Segoe UI',sans-serif;
+  --body:'DM Sans','Segoe UI',system-ui,sans-serif;
+  --max:1200px; --gut:clamp(14px,3vw,28px); --gap:clamp(12px,1.6vw,18px);
+  --bw:2.5px; --r:24px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--body);font-size:1.0625rem;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p,ul,ol,figure{margin:0}
+ul,ol{padding:0;list-style:none}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);font-weight:900;font-stretch:112%;letter-spacing:-.025em;line-height:1;text-wrap:balance}
+.wrap{width:100%;max-width:var(--max);margin:0 auto;padding:0 var(--gut)}
+.tile{border:var(--bw) solid var(--ink);border-radius:var(--r);background:var(--white);padding:clamp(18px,2.4vw,30px);box-shadow:5px 5px 0 var(--ink);min-width:0}
+.eyebrow{display:inline-block;font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.sticker{display:inline-block;padding:6px 12px;border:2px solid var(--ink);border-radius:999px;background:var(--white);font-weight:700;font-size:.9rem;line-height:1.25}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:54px;padding:0 24px;border-radius:16px;border:var(--bw) solid var(--ink);background:var(--white);color:var(--ink);font-family:var(--body);font-weight:700;font-size:1.08rem;text-decoration:none;white-space:nowrap;box-shadow:3px 3px 0 var(--ink)}
+.btn.primary{background:var(--violet);color:#fff}
+.btn.dark{background:var(--ink);color:#fff}
+.btn.sm{min-height:44px;padding:0 16px;font-size:.96rem;border-radius:13px}
+.btn.block{width:100%;white-space:normal;text-align:center}
+.mark{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#1B1030;font-family:var(--display);font-weight:900;font-size:1.2rem}
+.mark span{background:linear-gradient(120deg,#A78BFA,#FF5FA8);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+header .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:72px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:900;font-stretch:112%;font-size:1.3rem;text-decoration:none}
+nav.main{display:flex;align-items:center;gap:4px}
+nav.main a.link{padding:10px 10px;font-weight:700;font-size:.98rem;text-decoration:none;white-space:nowrap}
+@media(max-width:760px){.hide-m{display:none}}
+@media(max-width:400px){.brand{font-size:1.05rem;font-stretch:100%;gap:7px}.brand .mark{width:30px;height:30px;font-size:1rem}nav.main{gap:0}nav.main a.link{padding:10px 6px;font-size:.88rem}header .btn.sm{padding:0 10px;font-size:.88rem}}
+
+.bento{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--gap);padding-bottom:var(--gap)}
+.s12{grid-column:span 12}.s8{grid-column:span 8}.s7{grid-column:span 7}.s6{grid-column:span 6}.s5{grid-column:span 5}.s4{grid-column:span 4}.s3{grid-column:span 3}
+@media(max-width:980px){.s8,.s7,.s5{grid-column:span 12}.s4{grid-column:span 6}.s3{grid-column:span 6}.s4.full-t{grid-column:span 12}}
+@media(max-width:640px){.s8,.s7,.s6,.s5,.s4,.s3{grid-column:span 12}.tile{box-shadow:4px 4px 0 var(--ink)}}
+
+/* hero */
+.hero h1{font-size:clamp(1.7rem,5vw,4.1rem);font-stretch:106%;margin:16px 0 0;line-height:.98}
+.hero h1 .line{display:block}
+.hero h1 em{font-style:normal;color:var(--violet)}
+.lead{font-size:clamp(1.08rem,1.7vw,1.25rem);color:var(--ink-2);max-width:34em;margin-top:18px}
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}
+.stickers{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.stickers .sticker:nth-child(1){background:var(--c)}
+.stickers .sticker:nth-child(2){background:var(--b)}
+@media(max-width:480px){.actions .btn{flex:1 1 100%}}
+
+/* join */
+.join{background:var(--a);display:flex;flex-direction:column;gap:10px}
+.join h2{font-size:clamp(1.7rem,2.6vw,2.2rem)}
+.join p{font-size:1rem}
+.lbl{display:block;font-weight:700;font-size:.95rem;margin-top:6px}
+.inp{display:block;margin-top:5px;min-height:52px;padding:12px 14px;border:var(--bw) solid var(--ink);border-radius:14px;background:var(--white);font-weight:700;font-size:1.05rem}
+.inp.code{font-family:var(--display);font-weight:800;letter-spacing:.18em;color:#B9B3C7;font-size:1.15rem;white-space:nowrap;overflow:hidden}
+.hint{display:block;font-size:.88rem;margin-top:4px}
+.join .btn{margin-top:auto}
+
+/* steps */
+.sec-head{grid-column:span 12;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:clamp(20px,4vw,44px) 4px 2px}
+.sec-head h2{font-size:clamp(1.9rem,4.6vw,3.4rem)}
+.step{position:relative;overflow:hidden;min-height:230px;display:flex;flex-direction:column;justify-content:flex-end}
+.step .n{position:absolute;right:14px;top:-6px;font-family:var(--display);font-weight:900;font-stretch:125%;font-size:8rem;line-height:1;color:rgba(20,14,34,.14)}
+.step h3{font-size:1.9rem;margin-bottom:8px;position:relative}
+.step p{position:relative;font-size:1rem}
+.step.a{background:var(--a)}.step.b{background:var(--b)}.step.c{background:var(--c)}
+
+/* preview (stage) */
+.stage{background:var(--stage);color:#FAF7FF}
+.q-top{display:flex;justify-content:space-between;gap:12px;color:#A99FC4;font-weight:700;font-size:.85rem}
+.q-title{font-weight:700;font-size:clamp(1.2rem,2.2vw,1.5rem);line-height:1.2;margin:12px 0 14px}
+.timer{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:14px}
+.sec{display:inline-grid;place-items:center;min-width:3.2ch;padding:5px 12px;border:2px solid #C9B8FF;border-radius:12px;color:#C9B8FF;font-family:var(--display);font-weight:800;font-size:1.5rem;line-height:1}
+.track{height:10px;border-radius:5px;background:var(--stage-2);overflow:hidden}
+.track i{display:block;height:100%;width:62%;border-radius:5px;background:#C9B8FF}
+.ans{display:grid;gap:9px;margin-top:14px}
+.an{display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 12px;border-radius:14px;border:2px solid transparent;font-weight:700;font-size:1.05rem;background:var(--stage-2);line-height:1.2}
+.an b{flex:0 0 auto;display:grid;place-items:center;width:2em;height:2em;border-radius:9px;color:var(--ink)}
+.an.a{border-color:rgba(34,211,238,.55)}.an.a b{background:var(--a)}
+.an.c{border-color:rgba(255,197,61,.55)}.an.c b{background:var(--c)}
+.an.d{border-color:rgba(143,176,255,.55)}.an.d b{background:var(--d)}
+.an.b{background:var(--b);color:var(--ink);box-shadow:0 0 0 3px var(--stage),0 0 0 6px #FAF7FF}
+.an.b b{background:var(--ink);color:var(--b)}
+.tag{display:inline-block;margin-top:5px;padding:3px 9px;border-radius:8px;background:var(--ink);color:#fff;font-size:.75rem;font-weight:700}
+.stage figcaption{margin-top:14px;font-size:.88rem;color:#A99FC4}
+
+/* topic */
+.topic{display:flex;flex-direction:column;gap:12px}
+.topic h2{font-size:clamp(1.7rem,3.4vw,2.6rem)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-weight:700;font-size:.92rem}
+.chips .sticker:nth-of-type(4n+1){background:var(--a)}
+.chips .sticker:nth-of-type(4n+2){background:var(--b)}
+.chips .sticker:nth-of-type(4n+3){background:var(--c)}
+.chips .sticker:nth-of-type(4n+4){background:var(--d)}
+.topic .btn{align-self:flex-start;margin-top:auto}
+
+/* organiser */
+.org{background:var(--d)}
+.org h2{font-size:clamp(1.9rem,4vw,3.2rem)}
+.org p{margin-top:16px;font-size:1.08rem;max-width:36em}
+.org .note{margin-top:18px;padding:14px 16px;border:2px solid var(--ink);border-radius:16px;background:var(--white);font-size:1rem}
+.know{display:grid;gap:14px;margin-top:12px}
+.know li{padding-left:14px;border-left:5px solid var(--violet);color:var(--ink-2);font-size:.98rem}
+.know li:nth-child(2){border-color:var(--b)}.know li:nth-child(3){border-color:var(--a)}.know li:nth-child(4){border-color:var(--c)}
+.know strong{display:block;color:var(--ink)}
+
+/* placeholder */
+.ph{grid-column:span 12;padding:16px;border:2px dashed var(--ink-3);border-radius:var(--r);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.ph .card{height:84px;border-radius:14px;background:rgba(20,14,34,.06);display:flex;align-items:center;gap:10px;padding:12px}
+.ph .dot{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:rgba(20,14,34,.12)}
+.ph .lines{flex:1;display:grid;gap:7px}
+.ph .lines i{display:block;height:9px;border-radius:5px;background:rgba(20,14,34,.14)}
+.ph small{grid-column:1/-1;font-family:ui-monospace,Consolas,monospace;font-size:.72rem;color:var(--ink-3)}
+@media(max-width:640px){.ph{grid-template-columns:1fr}}
+
+/* pricing */
+.price-head{background:var(--violet);color:#fff;display:flex;flex-direction:column;justify-content:space-between;gap:16px}
+.price-head h2{font-size:clamp(2rem,4.4vw,3.4rem)}
+.price-head p{font-size:1.12rem}
+.free{display:grid;grid-template-columns:auto 1fr;gap:12px 28px;align-items:center}
+.price{font-family:var(--display);font-weight:900;font-stretch:112%;font-size:2.6rem;line-height:1;letter-spacing:-.03em;white-space:nowrap}
+.price small{font-family:var(--body);font-size:.88rem;font-weight:700;letter-spacing:0;color:var(--ink-3)}
+.ticks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px;font-size:.98rem}
+.ticks li::before{content:"✓";font-weight:700;margin-right:8px;color:var(--violet)}
+.free .cta{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;font-size:.95rem}
+.grp{grid-column:span 12;padding:14px 4px 0}
+.grp h3{font-size:1.6rem}
+.grp p{color:var(--ink-2);font-size:.95rem;margin-top:4px}
+.plan{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 12px}
+.plan .name{font-family:var(--display);font-weight:800;font-stretch:112%;font-size:1.15rem}
+.plan .price{grid-column:2;grid-row:1/span 3;text-align:right}
+.plan .games{font-weight:700}
+.plan .per{color:var(--ink-3);font-size:.9rem}
+.plan .btn{grid-column:1/-1;margin-top:12px}
+.plan.sub{background:var(--violet-soft)}
+.explain{grid-column:span 12;padding:6px 4px;color:var(--ink-2);font-size:.92rem;max-width:72em}
+@media(max-width:560px){.free{grid-template-columns:1fr}.ticks{grid-template-columns:1fr}}
+
+/* faq */
+.faq{display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);gap:clamp(16px,4vw,48px)}
+.faq h2{font-size:clamp(1.9rem,4.4vw,3.2rem)}
+details{border-bottom:2px solid var(--ink)}
+details:first-of-type{border-top:2px solid var(--ink)}
+summary{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0;cursor:pointer;list-style:none;font-weight:700;font-size:clamp(1.05rem,2vw,1.2rem);line-height:1.3}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";flex:0 0 auto;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;border:2px solid var(--ink);background:var(--c);font-size:1.3rem;line-height:1}
+details[open] summary::after{content:"×";background:var(--b)}
+details p{padding:0 48px 18px 0;color:var(--ink-2);max-width:62ch}
+.more{margin-top:16px}
+@media(max-width:800px){.faq{grid-template-columns:1fr}}
+
+/* finale */
+.finale{background:var(--ink);color:#fff;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:22px;box-shadow:5px 5px 0 var(--violet)}
+.finale h2{font-size:clamp(1.7rem,4vw,3rem);max-width:15em}
+.finale p{margin-top:10px;color:#D9D1EB}
+.finale .btn{border-color:#fff;box-shadow:3px 3px 0 rgba(255,255,255,.35)}
+
+footer{padding:28px 0 40px;font-size:.95rem;color:var(--ink-2)}
+footer .wrap{display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
+footer nav{display:flex;flex-wrap:wrap;gap:10px 20px;justify-content:flex-end;align-content:flex-start}
+footer a{font-weight:700}
+@media(max-width:700px){footer .wrap{grid-template-columns:1fr}footer nav{justify-content:flex-start}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#"><span class="mark" aria-hidden="true"><span>K</span></span>Kazoot</a>
+    <nav class="main" aria-label="Main">
+      <a class="link hide-m" href="#how-it-works">How it works</a>
+      <a class="link hide-m" href="#pricing">Pricing</a>
+      <a class="link" href="#join">Join a game</a>
+      <a class="btn sm" href="#">Sign in</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="bento">
+
+    <section class="tile s8 hero">
+      <span class="sticker eyebrow">Live quiz game for groups</span>
+      <h1><span class="line">Pick a topic.</span> <span class="line">Everyone plays —</span> <em class="line">including you.</em></h1>
+      <p class="lead">Kazoot writes a 10-question quiz on the topic you choose. Friends join on their phones with a code — and because you haven’t seen the questions either, you get to play too.</p>
+      <div class="actions">
+        <a class="btn primary" href="#">Try a free demo →</a>
+        <a class="btn" href="#">Create a quiz</a>
+      </div>
+      <div class="stickers">
+        <span class="sticker">Demo: no account, no card</span>
+        <span class="sticker">Your own topics: 3 free quizzes a month</span>
+      </div>
+    </section>
+
+    <section class="tile s4 full-t join" id="join">
+      <h2>Join a game</h2>
+      <p>Enter the code on the host’s screen. No account needed.</p>
+      <div>
+        <span class="lbl">Room code</span>
+        <span class="inp code" aria-hidden="true">ABCDE 23456</span>
+        <span class="hint">10 letters and numbers, like ABCDE 23456</span>
+      </div>
+      <div>
+        <span class="lbl">Your name</span>
+        <span class="inp" aria-hidden="true">&nbsp;</span>
+        <span class="hint">Shown on the scoreboard</span>
+      </div>
+      <a class="btn dark block" href="#">Join game</a>
+    </section>
+
+    <div class="sec-head" id="how-it-works"><h2>Ready in about a minute</h2></div>
+
+    <section class="tile s4 step a"><span class="n" aria-hidden="true">1</span><h3>Pick a topic</h3><p>Type something like “Nordic mythology” or “90s pop”. Choose English or Estonian, the difficulty and the timer.</p></section>
+    <section class="tile s4 step b"><span class="n" aria-hidden="true">2</span><h3>Invite</h3><p>Players go to www.kazoot.app/join and type the code, or scan the QR code on your screen. No app to install.</p></section>
+    <section class="tile s4 full-t step c"><span class="n" aria-hidden="true">3</span><h3>Play</h3><p>Everyone answers on their own device. Correct answers score more the faster they come. Standings after every question.</p></section>
+
+    <figure class="tile s5 stage">
+      <div aria-hidden="true">
+        <div class="q-top"><span>Question 3 of 10</span><span>7 of 9 answered</span></div>
+        <p class="q-title">Which spice comes from the dried stigmas of a crocus flower?</p>
+        <div class="timer"><span class="sec">13</span><span class="track"><i></i></span></div>
+        <div class="ans">
+          <div class="an a"><b>A</b>Turmeric</div>
+          <div class="an b"><b>B</b><span>Saffron<br><span class="tag">Locked in</span></span></div>
+          <div class="an c"><b>C</b>Cardamom</div>
+          <div class="an d"><b>D</b>Paprika</div>
+        </div>
+      </div>
+      <figcaption>The real question screen, shown with a question from the free demo.</figcaption>
+    </figure>
+
+    <section class="tile s7 topic">
+      <span class="eyebrow">New quiz</span>
+      <h2>What should the quiz be about?</h2>
+      <div>
+        <span class="lbl">Topic</span>
+        <span class="inp" aria-hidden="true">&nbsp;</span>
+        <span class="hint">Broad, well-known topics work best. Kazoot can’t know private details like your team’s inside jokes.</span>
+      </div>
+      <div class="chips">Ideas:
+        <span class="sticker">Famous bridges</span><span class="sticker">Nordic mythology</span><span class="sticker">1990s pop music</span><span class="sticker">Volcanoes</span><span class="sticker">Football World Cups</span><span class="sticker">Estonian history</span>
+      </div>
+      <a class="btn primary" href="#">Create a quiz</a>
+    </section>
+
+    <section class="tile s7 org">
+      <h2>The organiser doesn’t have to sit out</h2>
+      <p>Usually whoever writes the quiz knows every answer. With Kazoot, questions stay hidden until they appear on screen — for the host too. You start the game from your phone and compete like everyone else.</p>
+      <p class="note"><strong>Teaching or running a work session?</strong> Choose “Let me check first” to review and edit the questions before you start. Players see that the host has seen them.</p>
+    </section>
+
+    <section class="tile s5">
+      <span class="eyebrow">Good to know</span>
+      <ul class="know">
+        <li><strong>AI can be wrong.</strong>Questions are checked automatically, not by a person. Use review mode when accuracy matters.</li>
+        <li><strong>Best with well-known topics.</strong>Kazoot doesn’t know your office gossip or family stories.</li>
+        <li><strong>Up to 150 players per game.</strong>Each needs a phone or laptop with internet.</li>
+        <li><strong>English and Estonian.</strong>Questions are written in the language you pick.</li>
+      </ul>
+    </section>
+
+    <div class="ph" aria-hidden="true">
+      <div class="card"><span class="dot"></span><span class="lines"><i style="width:90%"></i><i style="width:70%"></i><i style="width:40%"></i></span></div>
+      <div class="card"><span class="dot"></span><span class="lines"><i style="width:80%"></i><i style="width:92%"></i><i style="width:36%"></i></span></div>
+      <div class="card"><span class="dot"></span><span class="lines"><i style="width:86%"></i><i style="width:60%"></i><i style="width:44%"></i></span></div>
+      <small>placeholder — social proof (real quotes or photos from hosts and their groups). Not available yet; not site copy.</small>
+    </div>
+
+    <section class="tile s4 full-t price-head" id="pricing">
+      <h2>Pricing</h2>
+      <p>Start free. Pay only if you host often.</p>
+    </section>
+    <section class="tile s8 free">
+      <div><strong>Free</strong><div class="price">€0</div></div>
+      <ul class="ticks">
+        <li><strong>3 AI games a month</strong> with a Google account</li>
+        <li>Demo quizzes any time, no account</li>
+        <li>Players never pay or sign up</li>
+        <li>Up to 150 players per game</li>
+      </ul>
+      <div class="cta"><a class="btn primary sm" href="#">Start free</a><a href="#">or try the demo, no account</a></div>
+    </section>
+
+    <div class="grp"><h3>Game packs</h3><p>Pay once · One-time payment, no subscription · Use them within 12 months</p></div>
+    <section class="tile s4 plan"><span class="name">Pack 20</span><span class="price">€5</span><span class="games">20 AI games</span><span class="per">€0.25 per game</span><a class="btn sm block" href="#">Buy Pack 20</a></section>
+    <section class="tile s4 plan"><span class="name">Pack 60</span><span class="price">€12</span><span class="games">60 AI games</span><span class="per">€0.20 per game</span><a class="btn sm block" href="#">Buy Pack 60</a></section>
+    <section class="tile s4 full-t plan"><span class="name">Pack 150</span><span class="price">€25</span><span class="games">150 AI games</span><span class="per">€0.17 per game</span><a class="btn sm block" href="#">Buy Pack 150</a></section>
+
+    <div class="grp"><h3>Monthly plans</h3><p>For regular hosts · Renews monthly until you cancel · Unused games carry over for one extra month · Cancel any time in “Manage billing”</p></div>
+    <section class="tile s6 plan sub"><span class="name">Plus</span><span class="price">€5 <small>/ month</small></span><span class="games">30 AI games every month</span><span class="per">€0.17 per game</span><a class="btn sm block" href="#">Subscribe to Plus</a></section>
+    <section class="tile s6 plan sub"><span class="name">Pro</span><span class="price">€12 <small>/ month</small></span><span class="games">90 AI games every month</span><span class="per">€0.13 per game</span><a class="btn sm block" href="#">Subscribe to Pro</a></section>
+    <p class="explain">One AI game = one 10-question quiz on a topic you choose. Playing, joining and demo quizzes are always free. If creating a quiz fails, the AI game is given back. Prices include any VAT that applies. Payments are handled by Stripe.</p>
+
+    <section class="tile s12 faq">
+      <h2>Questions</h2>
+      <div>
+        <details open><summary>Do players need an account or an app?</summary><p>No. Players open the join page in any browser, type the room code and a name. Only the person creating a quiz on their own topic signs in.</p></details>
+        <details><summary>How is the demo different from a real quiz?</summary><p>The demo uses hand-written quizzes that are the same for everyone, so it costs nothing to run. When you create your own quiz, Kazoot writes fresh questions for your topic. Everything else — joining, timing, scoring — is the same game.</p></details>
+        <details><summary>Can the questions be wrong?</summary><p>Yes, occasionally. Questions are written by AI and checked automatically for format, duplicates and obvious giveaways, but not by a person. If accuracy matters, for example in class, choose “Let me check first” to review and edit them before playing.</p></details>
+        <details><summary>What topics work best?</summary><p>Broad or well-known subjects: history, geography, science, films, music, sport, food, famous people and places. AI can’t know private things like your colleagues’ habits or a family story, and it declines topics that aren’t suitable for a general audience.</p></details>
+        <details><summary>What if someone’s phone disconnects?</summary><p>They reopen the page and carry on with the same seat and score. If the host drops out, the game waits for them briefly; after that the longest-connected player can keep it moving until the host is back.</p></details>
+        <details><summary>Can I show it on a big screen?</summary><p>Yes, but you don’t have to: questions and answers appear on every player’s device. If you host from a laptop on a projector, the room can follow along there too.</p></details>
+        <details><summary>Is it OK for schools and children?</summary><p>Players only enter a nickname — no account, email or other personal details. Topics are screened and questions are generated for a general audience, but no automated filter is perfect, so teachers should use review mode. Accounts for creating quizzes are for adults.</p></details>
+        <details><summary>How do refunds and cancellation work?</summary><p>Subscriptions can be cancelled any time from your account and stop at the end of the paid month. If creating a quiz fails, you get the AI game back automatically. See Refunds &amp; cancellation for details.</p></details>
+        <p class="more">Something else? Email <a href="#">support@kazoot.app</a>.</p>
+      </div>
+    </section>
+
+    <section class="tile s12 finale">
+      <div>
+        <h2>See how it feels — the demo takes two minutes.</h2>
+        <p>No account, no card. Play solo or with whoever is in the room.</p>
+      </div>
+      <div class="actions" style="margin-top:0">
+        <a class="btn primary" href="#">Try a free demo →</a>
+        <a class="btn" href="#">Join a game</a>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <p><strong>Kazoot</strong> — live quizzes for friends, classes and teams.</p>
+      <p>Questions or problems? <a href="#">support@kazoot.app</a></p>
+      <p>Idle Robot OÜ, reg. code 17641482</p>
+    </div>
+    <nav aria-label="Legal">
+      <a href="#">Pricing</a><a href="#">Terms</a><a href="#">Privacy</a><a href="#">Refunds &amp; cancellation</a><a href="#">Contact</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

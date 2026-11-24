@@ -107,9 +107,12 @@ frontend/src/
 ## Design system
 
 - **Palette from the logo** (`frontend/src/styles/tokens.js`): the K's violet → magenta stroke on
-  an aubergine tile. A cool-white light theme for the site (landing, setup, pricing, account) and
-  an aubergine **stage** theme for every live game screen (`<html data-stage="true">`), the
-  landing preview and closing panel (`data-stage-scope`). Dark-mode users get the stage palette.
+  an aubergine tile. The aubergine **stage** palette is the default for the whole site and for
+  everyone, whatever the OS colour setting (`<html data-theme="dark">`). A cool-white light theme
+  is an opt-in from the footer's "Theme" switch, remembered in `localStorage` (`kazoot:theme`) and
+  applied before first paint by `public/theme-init.js` (a file, because the CSP is
+  `script-src 'self'`). Live game screens (`<html data-stage="true">`) and stage islands on site
+  pages (`data-stage-scope`) stay on the stage palette in both themes; print is always light.
 - **Action colour:** violet `#7C3AED` → magenta `#C026D3` (`--brand-gradient`), white text
   (5.7:1 / 4.7:1). It is the only gradient in the UI and marks the primary action; repeated
   actions (one per pricing card) use the quieter `tonal` button. Violet *text* is `--accent-text`.

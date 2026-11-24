@@ -14,9 +14,13 @@ const PATHS = {
   arrowRight: 'M5 12h14M13 6l6 6-6 6',
   users: 'M16 20v-1.5a4 4 0 00-4-4H6a4 4 0 00-4 4V20M9 11a4 4 0 100-8 4 4 0 000 8zM22 20v-1.5a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8',
   crown: 'M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z',
+  menu: 'M4 7h16M4 12h16M4 17h16',
+  expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
 };
 
-export function Icon({ name, size = '1em', strokeWidth = 2.4, title, style }) {
+// Names: check, x, lock, clock, info, alert, wifiOff, dash, plus, arrowRight, users, crown, menu, expand.
+
+export function Icon({ name, size = '1em', strokeWidth = 2.4, title, style, className }) {
   return (
     <svg
       width={size}
@@ -29,6 +33,7 @@ export function Icon({ name, size = '1em', strokeWidth = 2.4, title, style }) {
       strokeLinejoin="round"
       aria-hidden={title ? undefined : 'true'}
       role={title ? 'img' : undefined}
+      className={className}
       style={{ flex: '0 0 auto', display: 'inline-block', verticalAlign: '-0.14em', ...style }}
     >
       {title ? <title>{title}</title> : null}

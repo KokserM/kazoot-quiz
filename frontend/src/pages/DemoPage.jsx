@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Container, ErrorNotice, Eyebrow, Field, Input, Muted, PageMain, PageTitle, SegmentedControl, Spinner, Stack } from '../components/ui';
 import { track } from '../lib/analytics';
 import { createSession } from '../lib/api';
+import { saveLastName } from '../lib/storage';
 import { useConfig } from '../lib/useConfig';
 
 export default function DemoPage() {
@@ -13,11 +14,21 @@ export default function DemoPage() {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [nameError, setNameError] = useState('');
+  const nameRef = useRef(null);
 
   useEffect(() => track('demo_opened', {}, { oncePerSession: true }), []);
 
   const start = async (event) => {
     event.preventDefault();
+    if (busy) return;
+    // The button stays enabled: a missing name is explained on press (validation pattern).
+    if (!name.trim()) {
+      setNameError('Enter a name.');
+      nameRef.current?.focus();
+      return;
+    }
+    saveLastName(name);
     setBusy(true);
     setError('');
     try {
@@ -59,7 +70,7 @@ export default function DemoPage() {
 
           {config ? (
             <Card>
-              <form onSubmit={start}>
+              <form onSubmit={start} noValidate>
                 <Stack $gap={22}>
                   <SegmentedControl
                     legend="How do you want to play?"
@@ -106,13 +117,23 @@ export default function DemoPage() {
                     </Stack>
                   </fieldset>
 
-                  <Field label="Your name" hint="Shown on the scoreboard">
-                    <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={24} autoComplete="nickname" required />
+                  <Field label="Your name" hint="Shown on the scoreboard" error={nameError}>
+                    <Input
+                      ref={nameRef}
+                      value={name}
+                      onChange={(event) => {
+                        setName(event.target.value);
+                        if (nameError && event.target.value.trim()) setNameError('');
+                      }}
+                      maxLength={24}
+                      autoComplete="nickname"
+                      required
+                    />
                   </Field>
 
                   <ErrorNotice error={error} />
                   <div>
-                    <Button type="submit" size="lg" busy={busy} disabled={busy || !name.trim()}>
+                    <Button type="submit" size="lg" busy={busy} disabled={busy}>
                       {mode === 'group' ? 'Create demo room' : 'Start solo preview'}
                     </Button>
                   </div>

@@ -90,7 +90,8 @@ genuinely can't peek.
 
 **UI.** New design system (`styles/tokens.js`, `components/ui.jsx`): warm paper/ink palette
 from the logo's violet, self-hosted Bricolage Grotesque + Atkinson Hyperlegible (no Google
-Fonts requests), light/dark themes, WCAG AA contrast enforced by a test, visible focus,
+Fonts requests), dark stage theme by default with an opt-in light theme (footer switch),
+WCAG AA contrast enforced by a test, visible focus,
 reduced-motion support, skip link, focus moved to new question headings, sparse screen-
 reader announcements for the countdown. Answer colours (teal/wine/ochre/slate with
 letters) avoid Kahoot's red/blue/yellow/green shapes. Rebuilt landing page, demo, create,

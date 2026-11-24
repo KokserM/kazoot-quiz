@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button, Card, Container, Field, Input, Muted, PageMain, PageTitle, Stack } from '../components/ui';
 import { isValidRoomCode, normalizeRoomCode } from '../lib/gameUi';
+import { saveLastName } from '../lib/storage';
 
 export default function JoinPage() {
   const navigate = useNavigate();
@@ -10,12 +11,27 @@ export default function JoinPage() {
   const [code, setCode] = useState(normalizeRoomCode(pathCode || params.get('code') || ''));
   const [name, setName] = useState('');
   const [touched, setTouched] = useState(false);
-  const codeError = touched && code && !isValidRoomCode(code) ? 'Room codes have 10 letters and numbers.' : null;
+  const [submitted, setSubmitted] = useState(false);
+  const codeRef = useRef(null);
+  const nameRef = useRef(null);
+  const codeInvalid = !isValidRoomCode(code);
+  const codeError = codeInvalid && ((touched && code) || submitted) ? 'Room codes have 10 letters and numbers.' : null;
+  const nameError = submitted && !name.trim() ? 'Enter a name.' : null;
 
+  // The button stays enabled; on press the first invalid field gets focus and its error.
   const submit = (event) => {
     event.preventDefault();
     setTouched(true);
-    if (!isValidRoomCode(code) || !name.trim()) return;
+    setSubmitted(true);
+    if (codeInvalid) {
+      codeRef.current?.focus();
+      return;
+    }
+    if (!name.trim()) {
+      nameRef.current?.focus();
+      return;
+    }
+    saveLastName(name);
     navigate(`/session/${code}`, { state: { username: name.trim() } });
   };
 
@@ -30,6 +46,7 @@ export default function JoinPage() {
               <Stack $gap={18}>
                 <Field label="Room code" hint="10 letters and numbers, like ABCDE 23456" error={codeError}>
                   <Input
+                    ref={codeRef}
                     value={code}
                     onChange={(event) => setCode(normalizeRoomCode(event.target.value))}
                     onBlur={() => setTouched(true)}
@@ -42,11 +59,19 @@ export default function JoinPage() {
                     required
                   />
                 </Field>
-                <Field label="Your name" hint="Shown on the scoreboard">
-                  <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={24} autoComplete="nickname" autoFocus={Boolean(code)} required />
+                <Field label="Your name" hint="Shown on the scoreboard" error={nameError}>
+                  <Input
+                    ref={nameRef}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    maxLength={24}
+                    autoComplete="nickname"
+                    autoFocus={Boolean(code)}
+                    required
+                  />
                 </Field>
                 <div>
-                  <Button type="submit" size="lg" disabled={!name.trim() || !isValidRoomCode(code)}>
+                  <Button type="submit" size="lg">
                     Join game
                   </Button>
                 </div>

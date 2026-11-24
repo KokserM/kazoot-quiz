@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kazoot share image template (1200×630)</title>
+<!--
+  Source of frontend/public/og/kazoot-og-v1.png (brief section 7.1). Not shipped.
+  Fonts load from the local node_modules (no network). Render from the repo root with:
+
+  "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless --disable-gpu --hide-scrollbars
+    --allow-file-access-from-files --force-device-scale-factor=1 --virtual-time-budget=5000
+    --window-size=1200,630 --screenshot=frontend\public\og\kazoot-og-v1.png
+    file:///D:/Projects/kazoot-kahoot/design-review/og-template.html
+
+  When the image changes, bump the file name (v2) and the URLs in frontend/index.html:
+  chat apps cache previews by URL.
+-->
+<style>
+@font-face {
+  font-family: 'Bricolage Grotesque Variable';
+  font-style: normal;
+  font-weight: 200 800;
+  font-stretch: 75% 100%;
+  src: url('../frontend/node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wdth-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 700;
+  src: url('../frontend/node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-700-normal.woff2') format('woff2');
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1200px; height: 630px; overflow: hidden; }
+body {
+  position: relative;
+  background:
+    radial-gradient(560px 420px at 12% 0%, rgba(124, 58, 237, 0.42), transparent 70%),
+    radial-gradient(520px 400px at 88% 8%, rgba(192, 38, 211, 0.34), transparent 70%),
+    radial-gradient(700px 300px at 50% 100%, rgba(34, 211, 238, 0.10), transparent 70%),
+    #100A1C;
+  color: #FAF7FF;
+  font-family: 'Atkinson Hyperlegible', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.abs { position: absolute; }
+
+.tile-logo {
+  left: 64px; top: 64px; width: 72px; height: 72px;
+  border-radius: 30%;
+  box-shadow: 0 0 0 1px rgba(201, 184, 255, 0.35);
+}
+.tile-logo img { width: 72px; height: 72px; border-radius: 30%; display: block; }
+.wordmark {
+  left: 152px; top: 64px; height: 72px;
+  display: flex; align-items: center;
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 700; font-size: 40px; letter-spacing: -0.02em;
+}
+
+.eyebrow {
+  left: 64px; top: 200px;
+  font-weight: 700; font-size: 22px; line-height: 1;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: #D9D1EB;
+}
+h1 {
+  left: 64px; top: 236px; max-width: 640px;
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 800; font-stretch: 82%;
+  font-size: 92px; line-height: 0.94; letter-spacing: -0.035em;
+  color: #FAF7FF;
+}
+h1 span { display: block; }
+h1 em {
+  display: block; font-style: normal;
+  background: linear-gradient(100deg, #B79CFF 10%, #FF7AB6 90%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  padding-bottom: 0.06em;
+}
+.address {
+  left: 64px; top: 538px; /* baseline at y = 566 */
+  font-weight: 700; font-size: 28px; line-height: 1;
+  color: #D9D1EB;
+}
+
+.timer { left: 760px; top: 96px; display: flex; align-items: center; gap: 20px; }
+.sec {
+  display: inline-grid; place-items: center;
+  padding: 8px 20px;
+  border: 3px solid #C9B8FF; border-radius: 18px;
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 700; font-size: 44px; line-height: 1;
+  color: #C9B8FF; font-variant-numeric: tabular-nums;
+}
+.track { width: 250px; height: 14px; border-radius: 7px; background: #251B3A; overflow: hidden; }
+.track i { display: block; width: 62%; height: 100%; border-radius: 7px; background: #C9B8FF; }
+
+.tiles {
+  left: 740px; top: 190px; width: 396px; height: 280px;
+  display: grid; grid-template-columns: repeat(2, 190px); grid-auto-rows: 132px; gap: 16px;
+  transform: rotate(-4deg);
+  border-radius: 20px;
+  box-shadow: 0 60px 120px -40px rgba(124, 58, 237, 0.75);
+}
+.t { position: relative; border-radius: 20px; }
+.t b {
+  position: absolute; left: 16px; top: 16px;
+  display: grid; place-items: center;
+  width: 56px; height: 56px; border-radius: 14px;
+  background: #140E22;
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 700; font-size: 32px; line-height: 1;
+}
+.a { background: #22D3EE; } .a b { color: #22D3EE; }
+.b { background: #FF7AB6; box-shadow: 0 0 0 5px #100A1C, 0 0 0 10px #FAF7FF; } .b b { color: #FF7AB6; }
+.c { background: #FFC53D; } .c b { color: #FFC53D; }
+.d { background: #8FB0FF; } .d b { color: #8FB0FF; }
+</style>
+</head>
+<body>
+  <div class="abs tile-logo"><img src="../frontend/public/brand/kazoot-mark.webp" alt=""></div>
+  <div class="abs wordmark">Kazoot</div>
+
+  <p class="abs eyebrow">Live quiz game for groups</p>
+  <h1 class="abs"><span>Pick a topic.</span><span>Everyone plays —</span><em>including you.</em></h1>
+  <p class="abs address">www.kazoot.app</p>
+
+  <div class="abs timer"><span class="sec">13</span><span class="track"><i></i></span></div>
+  <div class="abs tiles" aria-hidden="true">
+    <div class="t a"><b>A</b></div>
+    <div class="t b"><b>B</b></div>
+    <div class="t c"><b>C</b></div>
+    <div class="t d"><b>D</b></div>
+  </div>
+</body>
+</html>

@@ -1,15 +1,26 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Pick a topic and Kazoot writes a 10-question live quiz. Friends join on their phones with a code, and the host plays too. Free demo, no account needed." />
-    <meta name="theme-color" content="#F8F7FC" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#100A1C" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://www.kazoot.app/" />
+    <meta name="theme-color" content="#100A1C" />
+    <meta property="og:site_name" content="Kazoot" />
+    <meta property="og:url" content="https://www.kazoot.app/" />
     <meta property="og:title" content="Kazoot — live quizzes where the host plays too" />
     <meta property="og:description" content="Pick a topic, share a code, and everyone plays — including you." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/favicon-512.png" />
+    <meta property="og:image" content="https://www.kazoot.app/og/kazoot-og-v1.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Kazoot — live quizzes where the host plays too" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://www.kazoot.app/og/kazoot-og-v1.png" />
+    <!-- Sets data-theme (dark default, light if chosen), theme-color and data-lite before first paint.
+         A file, not inline: the CSP is script-src 'self'. -->
+    <script src="/theme-init.js"></script>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

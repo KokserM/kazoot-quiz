@@ -6,9 +6,34 @@ import { Icon } from './Icon';
 // Small, consistent building blocks. Colours and spacing come from the CSS
 // variables in styles/GlobalStyle.js.
 
+// Complete text styles for the type tokens (brief 4.2). Use inside styled components:
+//   const Title = styled.h2`${textStyle.h2}`;
+// Width is set with font-stretch (the display font's width axis), so it inherits.
+const display = css`
+  font-family: var(--font-display);
+  font-weight: 800;
+`;
+export const textStyle = {
+  hero: css`${display} font-size: var(--type-hero); font-stretch: 82%; line-height: 0.94; letter-spacing: -0.035em;`,
+  display: css`${display} font-size: var(--type-display); font-stretch: 84%; line-height: 1; letter-spacing: -0.03em;`,
+  h2: css`${display} font-size: var(--type-h2); font-stretch: 88%; line-height: 1.05; letter-spacing: -0.02em;`,
+  page: css`${display} font-size: var(--type-page); font-stretch: 88%; line-height: 1.05; letter-spacing: -0.02em;`,
+  h3: css`font-family: var(--font-display); font-weight: 700; font-size: var(--type-h3); font-stretch: 100%; line-height: 1.1; letter-spacing: -0.02em;`,
+  h3Group: css`font-family: var(--font-display); font-weight: 700; font-size: var(--type-h3-group); font-stretch: 100%; line-height: 1.1; letter-spacing: -0.02em;`,
+  h4: css`font-family: var(--font-display); font-weight: 700; font-size: var(--type-h4); font-stretch: 100%; line-height: 1.15; letter-spacing: -0.01em;`,
+  price: css`${display} font-size: var(--type-price); font-stretch: 92%; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums;`,
+  lead: css`font-family: var(--font-body); font-weight: 400; font-size: var(--type-lead); line-height: 1.5;`,
+  body: css`font-family: var(--font-body); font-weight: 400; font-size: var(--type-body); line-height: 1.55;`,
+  small: css`font-family: var(--font-body); font-weight: 400; font-size: var(--type-small); line-height: 1.45;`,
+  caption: css`font-family: var(--font-body); font-weight: 400; font-size: var(--type-caption); line-height: 1.4;`,
+  eyebrow: css`font-family: var(--font-body); font-weight: 700; font-size: var(--type-eyebrow); line-height: 1.2; letter-spacing: 0.12em; text-transform: uppercase;`,
+  // Prices, counts, room codes, timers, ranks and scores (fixes Atkinson's slashed zero).
+  numerals: css`font-family: var(--font-display); font-variant-numeric: tabular-nums;`,
+};
+
 export const Container = styled.div`
   width: 100%;
-  max-width: ${({ $narrow }) => ($narrow ? '680px' : 'var(--max)')};
+  max-width: ${({ $narrow }) => ($narrow ? 'var(--max-narrow)' : 'var(--max)')};
   margin: 0 auto;
   padding: 0 var(--gutter);
 `;
@@ -34,12 +59,15 @@ export const Card = styled.section`
   border-radius: var(--radius-lg);
   padding: ${({ $pad = 'clamp(18px, 3vw, 28px)' }) => $pad};
   box-shadow: var(--shadow);
+  /* Inputs inside a card read as wells on dark (brief 5.2). */
+  --field-bg: var(--field-well);
 `;
 
 export const Eyebrow = styled.p`
-  font-size: 0.8rem;
+  font-size: var(--type-eyebrow);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
   text-transform: uppercase;
   color: var(--ink-3);
 `;
@@ -49,89 +77,153 @@ export const Muted = styled.p`
   font-size: ${({ $small }) => ($small ? '0.92rem' : '1rem')};
 `;
 
+const BUTTON_SIZES = {
+  lg: { height: '56px', padX: '28px', font: '1.1rem', radius: '14px' },
+  md: { height: '48px', padX: '20px', font: '1rem', radius: '12px' },
+  // 44 px: the minimum tap target.
+  sm: { height: '44px', padX: '14px', font: '0.92rem', radius: '10px' },
+};
+const sizeOf = (size) => BUTTON_SIZES[size] || BUTTON_SIZES.md;
+
+// E6: a light band that runs along the button's edge (not across the fill, so the
+// label's contrast never drops). Plays once per hover on hover-capable devices, and
+// once 1.2 s after load when the button has `sheenOnLoad`. Off with reduced motion.
+const sheen = css`
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1.5px;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.85) 50%, transparent 65%) 130% 0 / 260% 100% no-repeat;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    ${({ $sheenOnLoad }) => ($sheenOnLoad ? css`&::after { animation: sheen var(--dur-sheen) var(--ease-in-out) 1200ms 1 both; }` : null)}
+  }
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    &:hover:not(:disabled):not([aria-disabled='true'])::after { animation: sheen var(--dur-sheen) var(--ease-in-out) 1 both; }
+  }
+  &:disabled::after, &[aria-disabled='true']::after { content: none; }
+`;
+
 const buttonBase = css`
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: ${({ $size }) => ($size === 'lg' ? '56px' : $size === 'sm' ? '40px' : '48px')};
-  padding: 0 ${({ $size }) => ($size === 'lg' ? '28px' : $size === 'sm' ? '14px' : '20px')};
-  border-radius: ${({ $size }) => ($size === 'sm' ? '10px' : '12px')};
+  min-height: ${({ $size }) => sizeOf($size).height};
+  padding: 0 ${({ $size }) => sizeOf($size).padX};
+  border-radius: ${({ $size }) => sizeOf($size).radius};
   border: 1.5px solid transparent;
   font-family: var(--font-body);
   font-weight: 700;
-  font-size: ${({ $size }) => ($size === 'lg' ? '1.1rem' : $size === 'sm' ? '0.92rem' : '1rem')};
+  font-size: ${({ $size }) => sizeOf($size).font};
   line-height: 1.1;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 160ms ease, color 140ms ease, transform 120ms var(--ease-out);
+  transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease, color var(--dur-fast) ease, transform var(--dur-press) var(--ease-out);
   width: ${({ $block }) => ($block ? '100%' : 'auto')};
   white-space: nowrap;
 
   &:active:not(:disabled) { transform: translateY(1px); }
-  &:disabled, &[aria-disabled='true'] { cursor: not-allowed; opacity: 0.5; box-shadow: none; }
-  &:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 12px; }
+  &:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+  /* Busy keeps the variant's colours and shows the spinner. */
+  &[aria-busy='true'] { cursor: progress; }
 
   ${({ $variant = 'primary' }) =>
     ({
       // The one gradient in the UI: the logo's violet → magenta stroke, reserved for the main action.
       primary: css`
+        ${sheen}
         background: var(--accent) var(--brand-gradient);
         color: var(--accent-ink);
         box-shadow: var(--shadow-action);
-        &:hover:not(:disabled) {
+        &:hover:not(:disabled):not([aria-disabled='true']) {
           background: var(--accent-hover) var(--brand-gradient-hover);
           color: var(--accent-ink);
           transform: translateY(-1px);
-          box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset, 0 14px 26px -12px rgba(124, 58, 237, 0.95);
+          box-shadow: var(--shadow-action-hover);
         }
       `,
       secondary: css`
-        background: var(--surface);
+        background: ${({ $onStage }) => ($onStage ? 'rgba(255, 255, 255, 0.03)' : 'var(--surface)')};
         color: var(--ink);
         border-color: var(--line-strong);
-        &:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
+        &:hover:not(:disabled):not([aria-disabled='true']) { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
       `,
       // Clearly a button, quieter than primary: for repeated actions such as one per pricing card.
       tonal: css`
         background: var(--accent-soft);
         color: var(--accent-text);
         border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-        &:hover:not(:disabled) { background: var(--accent) var(--brand-gradient); color: var(--accent-ink); border-color: transparent; }
+        &:hover:not(:disabled):not([aria-disabled='true']) { background: var(--accent) var(--brand-gradient); color: var(--accent-ink); border-color: transparent; }
       `,
       ghost: css`
         background: transparent;
         color: var(--ink);
-        &:hover:not(:disabled) { background: var(--surface-sunk); color: var(--ink); }
+        &:hover:not(:disabled):not([aria-disabled='true']) { background: var(--surface-sunk); color: var(--ink); }
       `,
       danger: css`
         background: transparent;
         color: var(--danger);
         border-color: var(--danger);
-        &:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
+        &:hover:not(:disabled):not([aria-disabled='true']) { background: var(--danger-soft); color: var(--danger); }
       `,
     })[$variant]}
+
+  /* Unavailable (not busy): a flat, readable style instead of reduced opacity (6.5:1). */
+  &:disabled:not([aria-busy='true']), &[aria-disabled='true'] {
+    background: var(--disabled-bg);
+    color: var(--disabled-ink);
+    border-color: var(--disabled-line);
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+  }
 `;
 
 const StyledButton = styled.button`${buttonBase}`;
 const StyledLinkButton = styled(Link)`${buttonBase}`;
 const StyledAnchorButton = styled.a`${buttonBase}`;
 
-export const Button = forwardRef(function Button({ variant, size, block, busy, children, type = 'button', ...props }, ref) {
+// Props shared by Button, LinkButton and AnchorButton:
+//   variant: 'primary' (default) | 'secondary' | 'tonal' | 'ghost' | 'danger'
+//   size: 'lg' (56) | undefined (48) | 'sm' (44)
+//   block: full width
+//   onStage: secondary sitting directly on --paper or a glow (hero, finale, docks)
+//   sheenOnLoad: primary only, one automatic sheen pass 1.2 s after mount (hero)
+export const Button = forwardRef(function Button({ variant, size, block, busy, onStage, sheenOnLoad, children, type = 'button', ...props }, ref) {
   return (
-    <StyledButton ref={ref} type={type} $variant={variant} $size={size} $block={block} aria-busy={busy || undefined} {...props}>
+    <StyledButton
+      ref={ref}
+      type={type}
+      $variant={variant}
+      $size={size}
+      $block={block}
+      $onStage={onStage}
+      $sheenOnLoad={sheenOnLoad}
+      aria-busy={busy || undefined}
+      {...props}
+    >
       {busy ? <Spinner aria-hidden="true" /> : null}
       {children}
     </StyledButton>
   );
 });
 
-export function LinkButton({ variant, size, block, ...props }) {
-  return <StyledLinkButton $variant={variant} $size={size} $block={block} {...props} />;
+export function LinkButton({ variant, size, block, onStage, sheenOnLoad, ...props }) {
+  return <StyledLinkButton $variant={variant} $size={size} $block={block} $onStage={onStage} $sheenOnLoad={sheenOnLoad} {...props} />;
 }
 
-export function AnchorButton({ variant, size, block, ...props }) {
-  return <StyledAnchorButton $variant={variant} $size={size} $block={block} {...props} />;
+export function AnchorButton({ variant, size, block, onStage, sheenOnLoad, ...props }) {
+  return <StyledAnchorButton $variant={variant} $size={size} $block={block} $onStage={onStage} $sheenOnLoad={sheenOnLoad} {...props} />;
 }
 
 const spin = keyframes`to { transform: rotate(360deg); }`;
@@ -170,7 +262,7 @@ const inputStyles = css`
   padding: 10px 14px;
   border-radius: var(--radius);
   border: 2px solid ${({ $invalid }) => ($invalid ? 'var(--danger)' : 'var(--line-strong)')};
-  background: var(--surface);
+  background: var(--field-bg, var(--surface));
   color: var(--ink);
   font-size: 1.05rem;
   &::placeholder { color: var(--ink-3); opacity: 1; }
@@ -224,7 +316,7 @@ const Segment = styled.label`
   flex-direction: column;
   justify-content: center;
   gap: 2px;
-  min-height: 46px;
+  min-height: 48px;
   padding: 8px 12px;
   border-radius: 10px;
   cursor: pointer;
@@ -240,13 +332,19 @@ const Segment = styled.label`
   &:has(input:focus-visible) { outline: 3px solid var(--focus); }
 `;
 
-export function SegmentedControl({ legend, name, value, options, onChange, disabled }) {
+// hideLegend: the legend stays for assistive tech but is visually hidden (pricing switch).
+// className/style go on the fieldset; the track has class "segments", each option "segment".
+export function SegmentedControl({ legend, name, value, options, onChange, disabled, hideLegend = false, className, style }) {
   return (
-    <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }} disabled={disabled}>
-      <legend style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 6, padding: 0 }}>{legend}</legend>
-      <Segments $count={options.length}>
+    <fieldset className={className} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, ...style }} disabled={disabled}>
+      {hideLegend ? (
+        <legend className="visually-hidden">{legend}</legend>
+      ) : (
+        <legend style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 6, padding: 0 }}>{legend}</legend>
+      )}
+      <Segments className="segments" $count={options.length}>
         {options.map((option) => (
-          <Segment key={option.value}>
+          <Segment key={option.value} className="segment">
             <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} />
             <span>{option.label}</span>
             {option.hint ? <small>{option.hint}</small> : null}
@@ -333,7 +431,7 @@ export const PageMain = styled.main`
 `;
 
 export const PageTitle = styled.h1`
-  font-size: clamp(1.9rem, 4.5vw, 2.8rem);
+  ${textStyle.page}
 `;
 
 export const SectionTitle = styled.h2`

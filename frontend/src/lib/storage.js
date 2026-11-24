@@ -84,3 +84,25 @@ export function markPlayerSessionEnded(sessionId) {
     expiresAt: Date.now() + ENDED_PLAYER_SESSION_TTL_MS,
   });
 }
+
+// The last name this browser played under (written whenever a name is submitted on
+// /demo, /join, /create or the session name form). Used to prefill and for one-tap solo.
+const LAST_NAME_KEY = 'kazoot:last-name';
+
+export function saveLastName(name) {
+  const value = String(name || '').trim().slice(0, 24);
+  if (!value) return;
+  try {
+    localStorage.setItem(LAST_NAME_KEY, value);
+  } catch {
+    // ignore: private mode or full storage
+  }
+}
+
+export function loadLastName() {
+  try {
+    return (localStorage.getItem(LAST_NAME_KEY) || '').trim().slice(0, 24);
+  } catch {
+    return '';
+  }
+}

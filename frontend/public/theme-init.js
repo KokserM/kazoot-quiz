@@ -1,0 +1,1 @@
+(function(d,n){var h=d.documentElement,t='dark',m;try{if(localStorage.getItem('kazoot:theme')==='light')t='light'}catch(e){}h.setAttribute('data-theme',t);m=d.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t=='light'?'#F8F7FC':'#100A1C');if(n.deviceMemory<=2||n.hardwareConcurrency<=4)h.setAttribute('data-lite','')})(document,navigator);

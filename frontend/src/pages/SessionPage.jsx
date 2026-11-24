@@ -7,12 +7,15 @@ import { Lobby } from '../components/game/Lobby';
 import { QuestionScreen, ResultsScreen } from '../components/game/RoundScreens';
 import { Button, Card, Container, ErrorNotice, Field, Input, LinkButton, Muted, Notice, PageMain, PageTitle, Row, Spinner, Stack } from '../components/ui';
 import { normalizeRoomCode, formatRoomCode } from '../lib/gameUi';
-import { loadPlayerSession } from '../lib/storage';
+import { loadPlayerSession, saveLastName } from '../lib/storage';
 import { useConfig } from '../lib/useConfig';
 import { useGame } from '../providers/GameProvider';
 
-function NameForm({ code, saved, onJoin }) {
+// Exported for tests.
+export function NameForm({ code, saved, onJoin }) {
   const [name, setName] = useState('');
+  const [nameError, setNameError] = useState('');
+  const nameRef = useRef(null);
   return (
     <Container $narrow>
       <Stack $gap={20}>
@@ -31,17 +34,35 @@ function NameForm({ code, saved, onJoin }) {
         ) : null}
         <Card>
           <form
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
+              // The button stays enabled: an empty name is explained on press.
+              if (!name.trim()) {
+                setNameError('Enter a name.');
+                nameRef.current?.focus();
+                return;
+              }
               onJoin(name.trim(), true);
             }}
           >
             <Stack $gap={16}>
-              <Field label={saved?.username ? 'Or join as someone new' : 'Your name'} hint="Shown on the scoreboard. Up to 24 characters.">
-                <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={24} autoComplete="nickname" required autoFocus={!saved} />
+              <Field label={saved?.username ? 'Or join as someone new' : 'Your name'} hint="Shown on the scoreboard. Up to 24 characters." error={nameError}>
+                <Input
+                  ref={nameRef}
+                  value={name}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    if (nameError && event.target.value.trim()) setNameError('');
+                  }}
+                  maxLength={24}
+                  autoComplete="nickname"
+                  required
+                  autoFocus={!saved}
+                />
               </Field>
               <div>
-                <Button type="submit" size="lg" disabled={!name.trim()}>
+                <Button type="submit" size="lg">
                   Join game
                 </Button>
               </div>
@@ -94,6 +115,7 @@ export default function SessionPage() {
   }, [isSolo, game.isHost, session?.gameState, game]);
 
   const handleJoin = (username, fresh) => {
+    saveLastName(username);
     setJoinRequested(true);
     game.join({ sessionId: code, username, fresh });
   };

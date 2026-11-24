@@ -226,6 +226,65 @@ test('text colour tokens meet WCAG AA contrast in light and dark themes', () => 
   }
 });
 
+// Resolves `var(--name)` token references (podium, disabled) to the hex they point at.
+function resolve(theme, name) {
+  let value = theme[name];
+  for (let depth = 0; depth < 5 && /^var\(--/.test(value); depth += 1) {
+    value = theme[value.slice(6, -1)];
+  }
+  return value;
+}
+// An rgba() layer composited over an opaque hex colour.
+function over(baseHex, rgba) {
+  const [r, g, b, a] = rgba.match(/[\d.]+/g).map(Number);
+  const base = [1, 3, 5].map((i) => parseInt(baseHex.slice(i, i + 2), 16));
+  return `#${[r, g, b].map((c, i) => Math.round(base[i] + a * (c - base[i])).toString(16).padStart(2, '0')).join('')}`;
+}
+
+test('stage-lights token pairs meet WCAG AA (brief 11.2, starred pairs)', () => {
+  const d = { ...LIGHT_COLORS, ...DARK_COLORS };
+  const l = LIGHT_COLORS;
+  const ratio = (theme, fg, bg) => contrast(resolve(theme, fg), resolve(theme, bg));
+
+  for (const theme of [d, l]) {
+    // Pedestals carry dark text, like the tiles they borrow their colours from.
+    for (const podium of ['podium-1', 'podium-2', 'podium-3']) {
+      expect(ratio(theme, 'answer-ink', podium), `answer-ink on ${podium}`).toBeGreaterThanOrEqual(4.5);
+    }
+    // Outcome block: points and rank (--ink) and the "You’re" label (--ink-2) on the soft fills.
+    for (const bg of ['success-soft', 'danger-soft']) {
+      expect(ratio(theme, 'ink', bg), `ink on ${bg}`).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(theme, 'ink-2', bg), `ink-2 on ${bg}`).toBeGreaterThanOrEqual(4.5);
+    }
+    // Unavailable buttons stay readable (no opacity).
+    expect(ratio(theme, 'disabled-ink', 'disabled-bg'), 'disabled button').toBeGreaterThanOrEqual(4.5);
+    // Logo ring and input borders (non-text, 3:1).
+    expect(ratio(theme, 'line-strong', 'paper'), 'line-strong on paper').toBeGreaterThanOrEqual(3);
+    expect(ratio(theme, 'line-strong', 'surface'), 'line-strong on surface').toBeGreaterThanOrEqual(3);
+  }
+
+  // Worst spotlight overlap in dark: --glow-a and --glow-b both at full strength over --paper.
+  const darkGlow = over(over(d.paper, d['glow-a']), d['glow-b']);
+  expect(contrast(d['ink-2'], darkGlow), 'ink-2 on glow').toBeGreaterThanOrEqual(4.5);
+  expect(contrast(d.ink, darkGlow), 'ink on glow').toBeGreaterThanOrEqual(4.5);
+  expect(contrast(d['brand-b'], darkGlow), 'brand-b (large) on glow').toBeGreaterThanOrEqual(3);
+
+  // Light spotlights: body text at AA, gradient headline ends as large text.
+  const lightGlow = over(over(l.paper, l['glow-a']), l['glow-b']);
+  for (const fg of ['ink-2', 'ink-3', 'accent-text']) {
+    expect(contrast(l[fg], lightGlow), `light ${fg} on glow`).toBeGreaterThanOrEqual(4.5);
+  }
+  for (const fg of ['brand-a', 'brand-b']) {
+    expect(contrast(l[fg], lightGlow), `light ${fg} on glow`).toBeGreaterThanOrEqual(3);
+  }
+
+  // Free band gradient ends in dark (brief 6.2): violet 28 % and magenta 18 % over --paper.
+  for (const end of [over(d.paper, 'rgba(124, 58, 237, 0.28)'), over(d.paper, 'rgba(192, 38, 211, 0.18)')]) {
+    expect(contrast(d['ink-2'], end), `ink-2 on free band ${end}`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(d['ink-3'], end), `ink-3 on free band ${end}`).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 // ------------------------------------------------------- kept from before
 
 test('support email falls back to the kazoot address and respects env override', () => {
