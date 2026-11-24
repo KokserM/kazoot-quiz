@@ -530,7 +530,8 @@ function useElementSize(ref) {
 export function GameShell({ phase, role = 'player', preview = false, banner = null, solo = false, sessionId = '', canBigScreen = false, defaultBig, children, className }) {
   const ref = useRef(null);
   const { width, height } = useElementSize(ref);
-  const [big, setBig] = useBigScreen(sessionId, canBigScreen && !preview, defaultBig);
+  // A preview (home hero) may show the Big screen layout when asked to, as a still picture.
+  const [big, setBig] = useBigScreen(sessionId, preview ? Boolean(defaultBig) : canBigScreen, defaultBig);
   useRegisterGameShell(!preview);
   useWakeLock(!preview);
 
