@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { PlanGrid, PricingExplainer } from '../components/Pricing';
 import { Container, Eyebrow, LinkButton, Muted, Notice, PageMain, PageTitle, Row, Stack } from '../components/ui';
 import { BRAND } from '../lib/brand';
+import { PRIVACY_HOST_ACCOUNT_DATA, PRIVACY_HOST_ACCOUNT_PURPOSE } from '../lib/copy';
 import { LEGAL, hasSellerIdentity } from '../lib/legal';
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '../lib/support';
 import { useCatalog, useConfig } from '../lib/useConfig';
@@ -12,11 +13,20 @@ import { useCatalog, useConfig } from '../lib/useConfig';
 // They have not been reviewed by a lawyer; the owner must complete seller
 // details and have them checked before relying on them.
 
+// Reading surfaces: a centred 760 px column (the container sets the measure), no glows,
+// grain or scroll-reveal.
+const ProseContainer = styled(Container)`
+  max-width: var(--max-prose);
+`;
+
 const Prose = styled.article`
-  max-width: 44em;
+  max-width: none;
+  font-size: var(--type-body);
+  line-height: 1.65;
   h2 {
     font-size: 1.35rem;
-    margin: 32px 0 10px;
+    color: var(--ink);
+    margin: 36px 0 10px;
   }
   h3 {
     font-size: 1.1rem;
@@ -29,6 +39,9 @@ const Prose = styled.article`
   p + p {
     margin-top: 10px;
   }
+  a {
+    color: var(--accent-text);
+  }
   ul {
     padding-left: 1.2em;
   }
@@ -39,6 +52,7 @@ const Prose = styled.article`
     border-collapse: collapse;
     width: 100%;
     font-size: 0.95rem;
+    line-height: 1.5;
   }
   th,
   td {
@@ -46,6 +60,50 @@ const Prose = styled.article`
     padding: 8px;
     border-bottom: 1px solid var(--line);
     vertical-align: top;
+  }
+  td {
+    color: var(--ink-2);
+  }
+
+  /* Phones: each row becomes a card; every cell is labelled with its column header. */
+  @media (max-width: 640px) {
+    table,
+    tbody,
+    tr,
+    td {
+      display: block;
+    }
+    thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+    tbody {
+      display: grid;
+      gap: 10px;
+    }
+    tr {
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+    td {
+      padding: 4px 0;
+      border: 0;
+    }
+    td::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--ink-3);
+    }
   }
 `;
 
@@ -70,13 +128,13 @@ function Seller() {
 function LegalShell({ title, children }) {
   return (
     <PageMain>
-      <Container>
+      <ProseContainer>
         <Stack $gap={12}>
           <Eyebrow>Last updated {LEGAL.lastUpdated}</Eyebrow>
           <PageTitle>{title}</PageTitle>
           <Prose>{children}</Prose>
         </Stack>
-      </Container>
+      </ProseContainer>
     </PageMain>
   );
 }
@@ -101,40 +159,40 @@ export function PrivacyPage() {
         </thead>
         <tbody>
           <tr>
-            <td>Player nickname, answers and scores</td>
-            <td>To run the game</td>
-            <td>Contract / legitimate interest</td>
-            <td>In server memory only; deleted when the room closes (usually within an hour)</td>
+            <td data-label="Data">Player nickname, answers and scores</td>
+            <td data-label="Why">To run the game</td>
+            <td data-label="Legal basis">Contract / legitimate interest</td>
+            <td data-label="Kept for">In server memory only; deleted when the room closes (usually within an hour)</td>
           </tr>
           <tr>
-            <td>Google account email, name and profile picture (hosts who sign in)</td>
-            <td>Your account, AI game balance and purchases</td>
-            <td>Contract</td>
-            <td>Until you delete your account</td>
+            <td data-label="Data">{PRIVACY_HOST_ACCOUNT_DATA}</td>
+            <td data-label="Why">{PRIVACY_HOST_ACCOUNT_PURPOSE}</td>
+            <td data-label="Legal basis">Contract</td>
+            <td data-label="Kept for">Until you delete your account</td>
           </tr>
           <tr>
-            <td>Quiz topics you enter, with date, language, token usage and an IP address</td>
-            <td>Charging AI games correctly, preventing abuse, cost limits</td>
-            <td>Contract / legitimate interest</td>
-            <td>12 months; the link to your account is removed if you delete it</td>
+            <td data-label="Data">Quiz topics you enter, with date, language, token usage and an IP address</td>
+            <td data-label="Why">Charging AI games correctly, preventing abuse, cost limits</td>
+            <td data-label="Legal basis">Contract / legitimate interest</td>
+            <td data-label="Kept for">12 months; the link to your account is removed if you delete it</td>
           </tr>
           <tr>
-            <td>Purchase records (plan, amount, Stripe IDs)</td>
-            <td>Delivering what you bought, refunds, accounting</td>
-            <td>Contract / legal obligation</td>
-            <td>7 years (Estonian Accounting Act)</td>
+            <td data-label="Data">Purchase records (plan, amount, Stripe IDs)</td>
+            <td data-label="Why">Delivering what you bought, refunds, accounting</td>
+            <td data-label="Legal basis">Contract / legal obligation</td>
+            <td data-label="Kept for">7 years (Estonian Accounting Act)</td>
           </tr>
           <tr>
-            <td>Technical logs (errors, timings; no quiz content or emails)</td>
-            <td>Keeping the service working</td>
-            <td>Legitimate interest</td>
-            <td>Up to 30 days in our hosting provider’s logs</td>
+            <td data-label="Data">Technical logs (errors, timings; no quiz content or emails)</td>
+            <td data-label="Why">Keeping the service working</td>
+            <td data-label="Legal basis">Legitimate interest</td>
+            <td data-label="Kept for">Up to 30 days in our hosting provider’s logs</td>
           </tr>
           <tr>
-            <td>Anonymous usage counts (e.g. “demo started”)</td>
-            <td>Understanding which features are used</td>
-            <td>Legitimate interest</td>
-            <td>Contain no identifiers</td>
+            <td data-label="Data">Anonymous usage counts (e.g. “demo started”)</td>
+            <td data-label="Why">Understanding which features are used</td>
+            <td data-label="Legal basis">Legitimate interest</td>
+            <td data-label="Kept for">Contain no identifiers</td>
           </tr>
         </tbody>
       </table>

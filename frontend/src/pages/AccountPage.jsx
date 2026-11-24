@@ -2,10 +2,22 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../auth/AuthProvider';
-import { PlanButton, PlanGrid, PricingExplainer, describePlan } from '../components/Pricing';
+import { Icon } from '../components/Icon';
+import {
+  FREE_AI_GAMES_SUFFIX,
+  FREE_DEMO_TICK,
+  FREE_PLAYERS_TICK,
+  PlanButton,
+  PlanGrid,
+  PricingExplainer,
+  describePlan,
+  freeAiGamesLabel,
+} from '../components/Pricing';
+import { SellerLine } from '../components/SellerLine';
 import { Badge, Button, Card, Container, Divider, ErrorNotice, Eyebrow, LinkButton, Muted, Notice, PageMain, PageTitle, Row, SectionTitle, Spinner, Stack } from '../components/ui';
 import { track } from '../lib/analytics';
 import { createCheckoutSession, createPortalSession, deleteAccount } from '../lib/api';
+import { PRIVACY_HOST_ACCOUNT_DATA, PRIVACY_HOST_ACCOUNT_PURPOSE } from '../lib/copy';
 import { useCatalog, useConfig } from '../lib/useConfig';
 
 export function formatDate(value) {
@@ -53,6 +65,73 @@ const GrantTable = styled.table`
   }
 `;
 
+// Page content may scroll sideways here on phones (not a game screen): the tables keep
+// their columns readable instead of squeezing.
+const TableScroll = styled.div`
+  @media (max-width: 560px) {
+    overflow-x: auto;
+    table {
+      min-width: 480px;
+    }
+  }
+`;
+
+const Numeral = styled.p`
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  font-weight: 800;
+  font-stretch: 92%;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+`;
+
+// Signed-out view: what an account gives (the free plan's own ticks) and which Google
+// data is used (the privacy table's own words).
+const SignedOutList = styled.ul`
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  color: var(--ink-2);
+  li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    align-items: start;
+  }
+  svg {
+    margin-top: 0.3em;
+    color: var(--success);
+  }
+  strong {
+    color: var(--ink);
+  }
+`;
+
+const DataNote = styled.div`
+  display: grid;
+  gap: 2px;
+  font-size: var(--type-small);
+  color: var(--ink-2);
+  a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-weight: 700;
+    width: max-content;
+  }
+`;
+
+const Actions = styled(Row)`
+  @media (max-width: 480px) {
+    > * {
+      flex: 1 1 100%;
+    }
+  }
+`;
+
 const GRANT_LABELS = { pack: 'Pack', subscription: 'Subscription', manual: 'Added by support' };
 
 // A plan chosen on a public pricing card (/account?buy=<id>). Kept in sessionStorage
@@ -89,7 +168,7 @@ function ConsentDialog({ plan, onCancel, onConfirm, busy }) {
       ref={dialogRef}
       onCancel={onCancel}
       aria-labelledby="consent-title"
-      style={{ border: '1px solid var(--line)', borderRadius: 22, padding: 0, maxWidth: 520, width: 'calc(100% - 32px)', background: 'var(--surface)', color: 'var(--ink)' }}
+      style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius-xl)', padding: 0, maxWidth: 520, width: 'calc(100% - 32px)', background: 'var(--surface)', color: 'var(--ink)' }}
     >
       <Stack $gap={14} style={{ padding: 24 }}>
         <h2 id="consent-title" style={{ fontSize: '1.4rem' }}>
@@ -100,13 +179,14 @@ function ConsentDialog({ plan, onCancel, onConfirm, busy }) {
             ? `${plan.name}: ${plan.credits} AI games every month. Renews monthly until you cancel in “Manage billing”.`
             : `${plan.name}: ${plan.credits} AI games, usable for ${plan.validityMonths || 12} months. One-time payment.`}
         </Muted>
-        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minHeight: 44, cursor: 'pointer' }}>
           <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} style={{ marginTop: 5, width: 20, height: 20 }} />
           <span>
             I want my AI games added to my account straight away, and I understand that once they are added I lose my 14-day right to withdraw from
             this purchase. (<Link to="/refunds">Refunds &amp; cancellation</Link>)
           </span>
         </label>
+        <SellerLine label="Sold by" />
         <Row>
           <Button onClick={onConfirm} disabled={!agreed || busy} busy={busy}>
             Continue to secure payment
@@ -227,23 +307,53 @@ export default function AccountPage() {
     return (
       <PageMain>
         <Container $narrow>
-          <Stack $gap={16}>
-            <PageTitle>{intendedPlan ? `Sign in to buy ${intendedPlan.name}` : 'Your account'}</PageTitle>
-            <Muted>
-              {intendedPlan
-                ? `${describePlan(intendedPlan).price} for ${describePlan(intendedPlan).headline}. Sign in with Google, then confirm the details and pay securely with Stripe.`
-                : 'Sign in to see your AI games and purchases. Players never need an account.'}
-            </Muted>
-            <ErrorNotice error={authError} />
-            <Row>
-              <Button onClick={signIn} disabled={!isConfigured}>
-                Continue with Google
-              </Button>
-              <LinkButton to="/pricing" variant="secondary">
-                See pricing
-              </LinkButton>
-            </Row>
-          </Stack>
+          <Card>
+            <Stack $gap={16}>
+              <PageTitle>{intendedPlan ? `Sign in to buy ${intendedPlan.name}` : 'Your account'}</PageTitle>
+              <Muted>
+                {intendedPlan
+                  ? `${describePlan(intendedPlan).price} for ${describePlan(intendedPlan).headline}. Sign in with Google, then confirm the details and pay securely with Stripe.`
+                  : 'Sign in to see your AI games and purchases. Players never need an account.'}
+              </Muted>
+              <ErrorNotice error={authError} />
+              <Actions>
+                <Button size="lg" onClick={signIn} disabled={!isConfigured} aria-describedby={isConfigured ? undefined : 'account-sign-in-unavailable'}>
+                  Continue with Google
+                </Button>
+                <LinkButton to="/pricing" variant="secondary" size="lg">
+                  See pricing
+                </LinkButton>
+              </Actions>
+              {!isConfigured ? (
+                <Notice $tone="warning" id="account-sign-in-unavailable">
+                  Sign-in isn’t configured on this server.
+                </Notice>
+              ) : null}
+              {intendedPlan ? <SellerLine label="Sold by" /> : null}
+              <Divider />
+              <SignedOutList>
+                <li>
+                  <Icon name="check" size="0.9em" />
+                  <span>
+                    <strong>{freeAiGamesLabel(config?.freeAiGamesPerMonth ?? 3)}</strong> {FREE_AI_GAMES_SUFFIX}
+                  </span>
+                </li>
+                <li>
+                  <Icon name="check" size="0.9em" />
+                  <span>{FREE_DEMO_TICK}</span>
+                </li>
+                <li>
+                  <Icon name="check" size="0.9em" />
+                  <span>{FREE_PLAYERS_TICK}</span>
+                </li>
+              </SignedOutList>
+              <DataNote>
+                <p>{PRIVACY_HOST_ACCOUNT_DATA}</p>
+                <p>{PRIVACY_HOST_ACCOUNT_PURPOSE}</p>
+                <Link to="/privacy">Privacy</Link>
+              </DataNote>
+            </Stack>
+          </Card>
         </Container>
       </PageMain>
     );
@@ -291,7 +401,7 @@ export default function AccountPage() {
                 <>
                   <Row $gap={28} $align="flex-end">
                     <div>
-                      <p style={{ fontFamily: 'var(--font-display)', fontSize: '2.6rem', fontWeight: 700, lineHeight: 1 }}>{usage.aiGamesLeft}</p>
+                      <Numeral>{usage.aiGamesLeft}</Numeral>
                       <Muted $small>in total</Muted>
                     </div>
                     <Muted>
@@ -301,7 +411,8 @@ export default function AccountPage() {
                     </Muted>
                   </Row>
                   {usage.grants.length ? (
-                    <GrantTable>
+                    <TableScroll>
+                      <GrantTable>
                       <caption className="visually-hidden">Purchased AI games, spent in this order</caption>
                       <thead>
                         <tr>
@@ -323,7 +434,8 @@ export default function AccountPage() {
                           </tr>
                         ))}
                       </tbody>
-                    </GrantTable>
+                      </GrantTable>
+                    </TableScroll>
                   ) : null}
                   <Muted $small>Free games are used first, then purchased games that expire soonest.</Muted>
                 </>
@@ -348,24 +460,28 @@ export default function AccountPage() {
                 </Button>
               </Row>
               <Muted $small>Opens Stripe’s secure billing page, where you can cancel, update your card and download invoices.</Muted>
+              <SellerLine label="Sold by" />
             </Stack>
           </Card>
 
           <Stack $gap={14} id="plans">
             <SectionTitle>Get more AI games</SectionTitle>
-            <PricingExplainer />
             {plans ? (
               <PlanGrid
                 plans={plans.filter((plan) => !(hasActiveSubscription && plan.mode === 'subscription'))}
                 config={config}
                 includeFree={false}
-                renderAction={(plan) => <PlanButton plan={plan} busy={busy === plan.id} disabled={Boolean(busy)} onBuy={setPendingPlan} />}
+                initialPlanId={intendedPlanId}
+                renderAction={(plan, { preferred }) => (
+                  <PlanButton plan={plan} preferred={preferred} busy={busy === plan.id} disabled={Boolean(busy)} onBuy={setPendingPlan} />
+                )}
               />
             ) : (
               <p role="status">
                 <Spinner aria-hidden="true" /> Loading plans…
               </p>
             )}
+            <PricingExplainer />
             {config?.billingTestMode ? <Notice $tone="warning">Test mode: no real payments are taken.</Notice> : null}
           </Stack>
 
@@ -373,7 +489,8 @@ export default function AccountPage() {
             <Card>
               <Stack $gap={10}>
                 <Eyebrow>Recent quizzes</Eyebrow>
-                <GrantTable>
+                <TableScroll>
+                  <GrantTable>
                   <thead>
                     <tr>
                       <th scope="col">Topic</th>
@@ -398,7 +515,8 @@ export default function AccountPage() {
                       </tr>
                     ))}
                   </tbody>
-                </GrantTable>
+                  </GrantTable>
+                </TableScroll>
               </Stack>
             </Card>
           ) : null}

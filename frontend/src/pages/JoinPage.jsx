@@ -1,15 +1,24 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import styled from 'styled-components';
+import { RoomCodeInput } from '../components/RoomCodeInput';
 import { Button, Card, Container, Field, Input, Muted, PageMain, PageTitle, Stack } from '../components/ui';
 import { isValidRoomCode, normalizeRoomCode } from '../lib/gameUi';
-import { saveLastName } from '../lib/storage';
+import { extractRoomCode } from '../lib/roomCode';
+import { loadLastName, saveLastName } from '../lib/storage';
+
+const Submit = styled.div`
+  @media (max-width: 560px) {
+    > button { width: 100%; }
+  }
+`;
 
 export default function JoinPage() {
   const navigate = useNavigate();
   const { code: pathCode } = useParams();
   const [params] = useSearchParams();
-  const [code, setCode] = useState(normalizeRoomCode(pathCode || params.get('code') || ''));
-  const [name, setName] = useState('');
+  const [code, setCode] = useState(() => (pathCode ? normalizeRoomCode(pathCode) : extractRoomCode(params.get('code') || '')));
+  const [name, setName] = useState(loadLastName);
   const [touched, setTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const codeRef = useRef(null);
@@ -39,22 +48,20 @@ export default function JoinPage() {
     <PageMain>
       <Container $narrow>
         <Stack $gap={20}>
-          <PageTitle>Join a game</PageTitle>
-          <Muted>Enter the code on the host’s screen. No account needed.</Muted>
+          <Stack $gap={10}>
+            <PageTitle>Join a game</PageTitle>
+            <Muted>Enter the code on the host’s screen. No account needed.</Muted>
+          </Stack>
           <Card>
             <form onSubmit={submit} noValidate>
               <Stack $gap={18}>
                 <Field label="Room code" hint="10 letters and numbers, like ABCDE 23456" error={codeError}>
-                  <Input
+                  <RoomCodeInput
                     ref={codeRef}
                     value={code}
-                    onChange={(event) => setCode(normalizeRoomCode(event.target.value))}
+                    onChange={setCode}
+                    onComplete={() => nameRef.current?.focus()}
                     onBlur={() => setTouched(true)}
-                    inputMode="text"
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    spellCheck={false}
-                    style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', letterSpacing: '0.12em' }}
                     autoFocus={!code}
                     required
                   />
@@ -70,11 +77,11 @@ export default function JoinPage() {
                     required
                   />
                 </Field>
-                <div>
+                <Submit>
                   <Button type="submit" size="lg">
                     Join game
                   </Button>
-                </div>
+                </Submit>
               </Stack>
             </form>
           </Card>

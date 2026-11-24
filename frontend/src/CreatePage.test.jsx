@@ -84,3 +84,58 @@ test('hosts with no AI games left are pointed to buying more instead of a failin
   expect(screen.getByRole('button', { name: 'Create quiz' })).toBeDisabled();
   auth.usage = { freeRemainingThisMonth: 1, credits: 0 };
 });
+
+test('the create button stays enabled and explains a missing topic or name on press', async () => {
+  auth.user = { ...auth.user, user_metadata: {} };
+  renderCreate();
+  const button = screen.getByRole('button', { name: 'Create quiz' });
+  expect(button).toBeEnabled();
+  fireEvent.click(button);
+  expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toEqual(['Topic must be at least 2 characters.', 'Enter a name.']);
+  expect(screen.getByLabelText(/^Topic/)).toHaveFocus();
+  fireEvent.change(screen.getByLabelText(/^Topic/), { target: { value: 'Volcanoes' } });
+  fireEvent.click(button);
+  expect(screen.getByRole('alert')).toHaveTextContent('Enter a name.');
+  expect(screen.getByLabelText('Your name')).toHaveFocus();
+  auth.user = { ...auth.user, user_metadata: { full_name: 'Hanna Tamm' } };
+});
+
+test('signed out: the topic field and all six ideas come first; the topic survives sign-in', () => {
+  const signedIn = auth.user;
+  auth.user = null;
+  auth.signIn.mockClear();
+  renderCreate();
+  expect(screen.getByLabelText(/^Topic/)).toBeInTheDocument();
+  for (const idea of ['Famous bridges', 'Nordic mythology', '1990s pop music', 'Volcanoes', 'Football World Cups', 'Estonian history']) {
+    expect(screen.getByRole('button', { name: idea })).toBeInTheDocument();
+  }
+  // Settings that need an account are not shown before signing in.
+  expect(screen.queryByLabelText('Your name')).toBeNull();
+  expect(screen.queryByRole('radio', { name: /Surprise me/ })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Sign in to create a quiz on a topic you choose' })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Volcanoes' }));
+  expect(screen.getByLabelText(/^Topic/)).toHaveValue('Volcanoes');
+  fireEvent.click(screen.getByRole('button', { name: 'Continue with Google' }));
+  expect(auth.signIn).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(sessionStorage.getItem('kazoot:create-draft'))).toEqual({ topic: 'Volcanoes' });
+  cleanup();
+
+  // Back from Google: the draft is restored once and removed, and the name field is next.
+  auth.user = signedIn;
+  renderCreate();
+  expect(screen.getByLabelText(/^Topic/)).toHaveValue('Volcanoes');
+  expect(sessionStorage.getItem('kazoot:create-draft')).toBeNull();
+});
+
+test('signed out with an empty topic still goes to sign-in (no error)', () => {
+  const signedIn = auth.user;
+  auth.user = null;
+  auth.signIn.mockClear();
+  renderCreate();
+  fireEvent.click(screen.getByRole('button', { name: 'Continue with Google' }));
+  expect(auth.signIn).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('alert')).toBeNull();
+  sessionStorage.clear();
+  auth.user = signedIn;
+});
